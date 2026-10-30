@@ -1,8 +1,10 @@
 """API routes for service records and verification (Contract Section 11)."""
 
 from typing import Any
+
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
+
 from app import clock
 from app.db import get_db
 from app.enums import from_x100
@@ -10,6 +12,7 @@ from app.errors import VaariError
 from app.evidence.record import verify
 from app.models import Evidence, Farmer, Machine, Plot, Request, ServiceRecord, Slot
 from app.schemas import RecordOut
+from app.tokens import require_live_link
 
 router = APIRouter(prefix="/records", tags=["records"])
 
@@ -22,6 +25,7 @@ def get_service_record(
     record = session.query(ServiceRecord).filter_by(token=token).first()
     if record is None:
         raise VaariError("NOT_FOUND", "Service record not found.", 404)
+    require_live_link(record.token_expires_at, record.token_revoked_at, "record")
 
     slot = session.query(Slot).filter_by(id=record.slot_id).one()
     req = session.query(Request).filter_by(id=slot.request_id).one()
@@ -102,4 +106,5 @@ def verify_service_record(
     record = session.query(ServiceRecord).filter_by(token=token).first()
     if record is None:
         raise VaariError("NOT_FOUND", "Service record not found.", 404)
+    require_live_link(record.token_expires_at, record.token_revoked_at, "record")
     return verify(session, token)

@@ -2,8 +2,10 @@
 
 from collections.abc import Generator
 from pathlib import Path
+
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session, declarative_base, sessionmaker
+
 from app.config import settings
 
 Base = declarative_base()

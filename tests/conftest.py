@@ -3,6 +3,7 @@
 import os
 import tempfile
 from pathlib import Path
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, event
@@ -12,16 +13,59 @@ from sqlalchemy.orm import sessionmaker
 os.environ["VAARI_DEMO_PASSCODE"] = "test-passcode"
 os.environ["VAARI_TZ"] = "Asia/Kolkata"
 os.environ["VAARI_READER"] = "mock"
+os.environ["VAARI_READER_PROBE"] = "false"
 
+from app.db import get_db, override_db
 from app.main import app
-from app.db import override_db, get_db, Base
+
+
+@pytest.fixture(autouse=True)
+def _reset_rate_limits():
+    """Each test starts with empty rate-limit and lockout counters."""
+    from app.ratelimit import limiter, lockout
+
+    limiter.reset()
+    lockout.reset()
+    yield
+    limiter.reset()
+    lockout.reset()
+
+
+def _sqlite_engine(path: str):
+    engine = create_engine(f"sqlite:///{Path(path).as_posix()}", connect_args={"check_same_thread": False})
+
+    @event.listens_for(engine, "connect")
+    def set_sqlite_pragma(dbapi_connection, connection_record):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.execute("PRAGMA busy_timeout=5000")
+        cursor.close()
+
+    return engine
+
+
+@pytest.fixture(scope="session")
+def migrated_template(tmp_path_factory):
+    """One database built by the Alembic migrations (not create_all); each test gets a copy."""
+    from app.migrate import ensure_schema
+
+    path = tmp_path_factory.mktemp("template") / "template.sqlite"
+    engine = _sqlite_engine(str(path))
+    ensure_schema(engine)
+    with engine.connect() as conn:
+        conn.exec_driver_sql("PRAGMA wal_checkpoint(TRUNCATE)")
+    engine.dispose()
+    return path
 
 
 @pytest.fixture
-def temp_db():
-    """Create a temporary SQLite database for test isolation."""
+def temp_db(migrated_template):
+    """Create a temporary SQLite database (a copy of the migrated template) for test isolation."""
+    import shutil
+
     with tempfile.NamedTemporaryFile(suffix=".sqlite", delete=False) as tf:
         temp_path = tf.name
+    shutil.copyfile(migrated_template, temp_path)
 
     db_url = f"sqlite:///{Path(temp_path).as_posix()}"
     engine = create_engine(db_url, connect_args={"check_same_thread": False})
@@ -34,7 +78,6 @@ def temp_db():
         cursor.close()
 
     SessionFactory = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-    Base.metadata.create_all(bind=engine)
 
     override_db(engine, SessionFactory)
 

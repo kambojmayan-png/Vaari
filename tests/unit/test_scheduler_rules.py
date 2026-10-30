@@ -1,9 +1,9 @@
 """Rules, invariants and determinism tests for pure scheduler plan() (C1-C8, C10-C13)."""
 
+import json
 from dataclasses import asdict
 from datetime import date, datetime, timezone
-import json
-import pytest
+
 from app.scheduler.plan import (
     CentreIn,
     ExistingSlot,
@@ -365,3 +365,28 @@ def test_explanation_sentences_match_templates():
     # Check "Scheduled on 20 Oct on Super Seeder: the earliest day with 3.2 free acres before the deadline of 24 Oct."
     assert "Scheduled on 20 Oct on" in p.assignments[0].explanation
     assert "the earliest day with 3.2 free acres before the deadline of 24 Oct." in p.assignments[0].explanation
+
+
+def test_naive_created_at_is_treated_as_utc():
+    """Found by ruff (F821) in pilot item C11: a naive created_at used to raise NameError."""
+    today = date(2026, 10, 10)
+    naive = RequestIn(
+        id=2,
+        created_at=datetime(2026, 10, 10, 8, 0),
+        service_type="super_seeder",
+        acres_x100=300,
+        harvest_date=today,
+        deadline_date=today,
+    )
+    aware = RequestIn(
+        id=1,
+        created_at=datetime(2026, 10, 10, 9, 0, tzinfo=timezone.utc),
+        service_type="super_seeder",
+        acres_x100=300,
+        harvest_date=today,
+        deadline_date=today,
+    )
+    machine = MachineIn(id=1, service_types=("super_seeder",), capacity_acres_x100=300, status="active")
+    p = plan([aware, naive], [machine], CENTRES, [], today, DEFAULT_SETTINGS)
+    # 08:00 naive (UTC) is earlier than 09:00 UTC, so the naive request wins the only space.
+    assert [a.request_id for a in p.assignments] == [2]

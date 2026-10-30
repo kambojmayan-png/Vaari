@@ -5,7 +5,7 @@ Pure function: no database, no clock, no network, no randomness.
 
 from collections.abc import Iterator
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
 from app.enums import from_x100
@@ -175,8 +175,6 @@ def plan(
     assignments: list[Assignment] = []
     misses: list[Miss] = []
 
-    # Map machine_id -> machine object
-    machine_by_id = {m.id: m for m in machines}
 
     for req in sorted_requests:
         # 2. Validity check

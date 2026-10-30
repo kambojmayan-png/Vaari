@@ -1,8 +1,10 @@
 """Error handling and auth API tests."""
 
 from fastapi import Depends
+
 from app.auth import require_passcode
 from app.main import app
+
 
 # Add a test-only route for checking passcode protection
 @app.get("/api/test-protected")

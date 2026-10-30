@@ -1,6 +1,7 @@
 """API tests for Step 05: scheduler implementation, C9, B7 (second half), C11, will-miss."""
 
-from datetime import date, timedelta
+from datetime import timedelta
+
 from app import clock
 
 

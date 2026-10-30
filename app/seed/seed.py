@@ -19,21 +19,23 @@ Total: exactly 28 scheduled, 7 will miss, 5 needs info = 40 requests.
 """
 
 import json
-from pathlib import Path
 import shutil
 import sys
 import time
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
 from sqlalchemy.orm import Session
+
 from app import clock
 from app.config import settings
-from app.db import Base, get_db, get_engine, get_session_factory
+from app.db import get_engine, get_session_factory
 from app.enums import to_x100
 from app.event_log import log_event
 from app.models import Centre, Farmer, Machine, Plot, Request, Village
 from app.scheduler.dates import compute_dates
 from app.scheduler.service import run_for_centre
-from app.tokens import new_token
+from app.tokens import driver_link_expiry, new_token
 
 
 def load_villages(session: Session, centre_lat: float, centre_lon: float) -> dict[str, Village]:
@@ -59,7 +61,6 @@ def load_villages(session: Session, centre_lat: float, centre_lon: float) -> dic
 
 def seed_data(session: Session) -> dict[str, int]:
     today = clock.today()
-    now = clock.now_utc()
 
     # 1. Centres
     # Home centre
@@ -124,6 +125,7 @@ def seed_data(session: Session) -> dict[str, int]:
                 active_to=None,
                 status="active",
                 link_token=new_token(),
+                link_expires_at=driver_link_expiry(),
             )
             session.add(m)
     session.flush()
@@ -323,8 +325,10 @@ def reset_db() -> dict[str, int]:
         if target.exists():
             shutil.rmtree(target, ignore_errors=True)
 
-    # Recreate tables
-    Base.metadata.create_all(bind=engine)
+    # Recreate tables with the migrations (pilot B6)
+    from app.migrate import ensure_schema
+
+    ensure_schema(get_engine())
 
     SessionFactory = get_session_factory()
     with SessionFactory() as session:
@@ -335,7 +339,10 @@ def reset_db() -> dict[str, int]:
     print(f"  Scheduled:  {counts.get('scheduled')}")
     print(f"  Will miss:  {counts.get('will_miss')}")
     print(f"  Needs info: {counts.get('needs_info')}")
-    print(f"  Passcode:   {settings.demo_passcode} (set in .env)")
+    if settings.is_production:
+        print("  Sign in:    with a staff account (python tasks.py create-user)")
+    else:
+        print("  Passcode:   set in .env as VAARI_DEMO_PASSCODE (development only)")
 
     # Print driver paths
     with SessionFactory() as session:
@@ -347,9 +354,17 @@ def reset_db() -> dict[str, int]:
 
 
 if __name__ == "__main__":
+    if settings.is_production and "--yes-delete-everything" not in sys.argv:
+        # Reset deletes the database and every photo; seeding adds fictional farmers.
+        print("Refused: reset and seed are for development. In production they would delete or mix in demo data.")
+        print("If you really mean it, add --yes-delete-everything.")
+        sys.exit(1)
     if "--reset" in sys.argv:
         reset_db()
     else:
+        from app.migrate import ensure_schema
+
+        ensure_schema()
         sf = get_session_factory()
         with sf() as s:
             counts = seed_data(s)

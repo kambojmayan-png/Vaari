@@ -15,6 +15,10 @@ export default defineConfig({
     trace: 'off',
     video: 'off',
     screenshot: 'only-on-failure',
+    // Optional: point at a preinstalled Chromium when the bundled revision is absent.
+    launchOptions: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE
+      ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE }
+      : {},
   },
   projects: [
     {

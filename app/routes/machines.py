@@ -2,16 +2,17 @@
 
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
-from app.auth import require_passcode
+
+from app.auth import ROLE_OPERATOR, Principal, require_operator, require_staff
 from app.db import get_db
 from app.enums import MachineStatus, to_x100
 from app.errors import VaariError
 from app.event_log import log_event
 from app.models import Machine, Request, Slot
 from app.routes.common import get_or_create_home_centre, serialize_machine
-from app.schemas import MachineIn, MachinePatch, MachineOut
 from app.scheduler.service import run_for_centre
-from app.tokens import new_token
+from app.schemas import MachineIn, MachineOut, MachinePatch
+from app.tokens import driver_link_expiry, new_token
 
 router = APIRouter(prefix="/machines", tags=["machines"])
 
@@ -20,7 +21,7 @@ router = APIRouter(prefix="/machines", tags=["machines"])
 def create_machine(
     payload: MachineIn,
     session: Session = Depends(get_db),
-    _passcode: str = Depends(require_passcode),
+    _principal: Principal = Depends(require_operator),
 ):
     home_centre = get_or_create_home_centre(session)
 
@@ -35,6 +36,7 @@ def create_machine(
         active_to=payload.active_to,
         status="active",
         link_token=new_token(),
+        link_expires_at=driver_link_expiry(),
     )
     session.add(machine)
     session.flush()
@@ -55,10 +57,15 @@ def create_machine(
 @router.get("", response_model=list[MachineOut])
 def list_machines(
     session: Session = Depends(get_db),
-    _passcode: str = Depends(require_passcode),
+    principal: Principal = Depends(require_staff),
 ):
     machines = session.query(Machine).order_by(Machine.id.asc()).all()
-    return [serialize_machine(m) for m in machines]
+    out = [serialize_machine(m) for m in machines]
+    if ROLE_OPERATOR not in principal.roles:
+        # Officers see the fleet but never the driver links.
+        for m in out:
+            m.driver_path = ""
+    return out
 
 
 @router.patch("/{id}", response_model=MachineOut)
@@ -66,7 +73,7 @@ def patch_machine(
     id: int,
     payload: MachinePatch,
     session: Session = Depends(get_db),
-    _passcode: str = Depends(require_passcode),
+    _principal: Principal = Depends(require_operator),
 ):
     machine = session.query(Machine).filter_by(id=id).first()
     if machine is None:
@@ -122,4 +129,55 @@ def patch_machine(
     )
     session.commit()
 
+    return serialize_machine(machine)
+
+
+@router.post("/{id}/link/rotate", response_model=MachineOut)
+def rotate_driver_link(
+    id: int,
+    session: Session = Depends(get_db),
+    _principal: Principal = Depends(require_operator),
+):
+    """Issue a new driver link. The old link, and the slot links it handed out, stop working."""
+    machine = session.query(Machine).filter_by(id=id).first()
+    if machine is None:
+        raise VaariError("NOT_FOUND", "Machine not found.", 404)
+    machine.link_token = new_token()
+    machine.link_expires_at = driver_link_expiry()
+    machine.link_revoked_at = None
+    open_slots = (
+        session.query(Slot)
+        .filter(Slot.machine_id == machine.id, Slot.status.in_(["scheduled", "in_progress"]))
+        .all()
+    )
+    for s in open_slots:
+        s.link_token = new_token()
+    log_event(
+        session=session,
+        actor="operator",
+        entity="machine",
+        entity_id=machine.id,
+        event="driver_link_rotated",
+        payload={"slot_links_rotated": len(open_slots)},
+    )
+    session.commit()
+    return serialize_machine(machine)
+
+
+@router.post("/{id}/link/revoke", response_model=MachineOut)
+def revoke_driver_link(
+    id: int,
+    session: Session = Depends(get_db),
+    _principal: Principal = Depends(require_operator),
+):
+    """Turn the driver link off now (for a lost phone or a driver who left)."""
+    machine = session.query(Machine).filter_by(id=id).first()
+    if machine is None:
+        raise VaariError("NOT_FOUND", "Machine not found.", 404)
+    if machine.link_revoked_at is None:
+        from app import clock
+
+        machine.link_revoked_at = clock.now_utc()
+        log_event(session=session, actor="operator", entity="machine", entity_id=machine.id, event="driver_link_revoked")
+    session.commit()
     return serialize_machine(machine)

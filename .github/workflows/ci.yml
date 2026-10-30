@@ -6,11 +6,25 @@ on:
   pull_request:
     branches: ["**"]
 
+permissions:
+  contents: read
+
 jobs:
+  lint:
+    name: Lint (ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements-dev.txt
+      - run: ruff check .
+
   test:
     name: Python tests
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
 
@@ -27,6 +41,41 @@ jobs:
 
       - name: Run pytest
         run: python -m pytest -q
+
+      - name: Production settings refuse to start when unsafe
+        env:
+          VAARI_ENV: production
+          VAARI_SECRET_KEY: change-me
+        run: |
+          if python tasks.py check-config; then echo "check-config should have failed"; exit 1; fi
+
+  audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: pip-audit (runtime requirements)
+        run: |
+          pip install pip-audit
+          pip-audit -r requirements.txt --progress-spinner off
+
+      - name: npm audit (fails on high or critical)
+        working-directory: web
+        # Two moderate react-router advisories are known and assessed in notes/npm-audit.md
+        # (SSR hydration and open-redirect paths that this static SPA does not use).
+        run: |
+          npm ci
+          npm audit --audit-level=high
 
   build-web:
     name: Web build
@@ -49,3 +98,70 @@ jobs:
       - name: Build web
         working-directory: web
         run: npm run build
+
+  e2e:
+    name: Browser tests (Playwright)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          cd web && npm ci && npx playwright install --with-deps chromium
+
+      - name: Run e2e (development pass, then production sign-in pass)
+        run: python tasks.py e2e
+
+      - name: Upload Playwright results on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-results
+          path: web/test-results
+          retention-days: 7
+
+  docker:
+    name: Docker build and smoke test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker build -t vaari:ci .
+
+      - name: Refuses to start without a secret
+        run: |
+          if docker run --rm -e VAARI_SECRET_KEY= vaari:ci python tasks.py check-config; then
+            echo "the image should refuse unsafe settings"; exit 1
+          fi
+
+      - name: Starts healthy and runs as non-root
+        run: |
+          SECRET=$(python3 -c "import secrets; print(secrets.token_urlsafe(48))")
+          docker run -d --name vaari-ci -p 127.0.0.1:8000:8000 -e VAARI_SECRET_KEY="$SECRET" vaari:ci
+          for i in $(seq 1 30); do
+            status=$(docker inspect -f '{{.State.Health.Status}}' vaari-ci)
+            [ "$status" = "healthy" ] && break
+            sleep 2
+          done
+          docker logs vaari-ci
+          test "$status" = "healthy"
+          test "$(docker exec vaari-ci id -u)" != "0"
+          curl -fsS http://127.0.0.1:8000/api/ready
+          test "$(curl -s -o /dev/null -w '%{http_code}' -H 'X-Vaari-Passcode: change-me' http://127.0.0.1:8000/api/requests)" = "401"
+
+      - name: Clean up
+        if: always()
+        run: docker rm -f vaari-ci || true

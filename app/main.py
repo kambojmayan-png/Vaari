@@ -1,16 +1,24 @@
 """Main FastAPI application for Vaari."""
 
+import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
+
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.routing import Match, Route
 
-from app.db import Base, get_engine, get_session_factory
-from app.errors import setup_error_handlers
 import app.models  # ensure models are registered
+from app.config import settings
+from app.db import get_engine, get_session_factory
+from app.errors import setup_error_handlers
+from app.intake.probe import start_probe_in_background
+from app.logging_setup import RequestContextMiddleware, configure_logging, log_event
+from app.migrate import ensure_schema
+from app.ratelimit import RateLimitMiddleware
+from app.routes.auth import router as auth_router
 from app.routes.common import get_or_create_home_centre
 from app.routes.dashboard import router as dashboard_router
 from app.routes.driver import router as driver_router
@@ -22,11 +30,23 @@ from app.routes.records import router as records_router
 from app.routes.requests import router as requests_router
 from app.routes.schedule import router as schedule_router
 from app.routes.slots import router as slots_router
+from app.security_headers import ConfiguredCORSMiddleware, SecurityHeadersMiddleware
+from app.startup_checks import UnsafeConfigError, enforce_startup_checks
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    Base.metadata.create_all(bind=get_engine())
+    configure_logging()
+    try:
+        enforce_startup_checks(settings)
+    except UnsafeConfigError as exc:
+        # One clear line for whoever reads the container logs, before uvicorn prints the traceback.
+        logging.getLogger("vaari").error(str(exc), extra={"fields": {"event": "refused_to_start"}})
+        raise
+    revision = ensure_schema(get_engine())
+    log_event("startup", event="startup", env=settings.env, auth=settings.auth_mode, reader=settings.reader, revision=revision)
+    if settings.reader_probe:
+        start_probe_in_background(settings)
     session_factory = get_session_factory()
     with session_factory() as session:
         get_or_create_home_centre(session)
@@ -37,8 +57,16 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Vaari Backend", version="0.1", lifespan=lifespan)
 
 setup_error_handlers(app)
+app.add_middleware(RateLimitMiddleware)
+# Cross-origin calls only from VAARI_CORS_ORIGINS. Same-origin use (the normal case) needs none.
+app.add_middleware(ConfiguredCORSMiddleware)
+# Request IDs, access logs and the last-resort 500 handler wrap everything below.
+app.add_middleware(RequestContextMiddleware)
+# Added last so it wraps everything, including rate-limit, CORS and 500 responses.
+app.add_middleware(SecurityHeadersMiddleware)
 
 app.include_router(health_router, prefix="/api")
+app.include_router(auth_router, prefix="/api")
 app.include_router(requests_router, prefix="/api")
 app.include_router(machines_router, prefix="/api")
 app.include_router(plots_router, prefix="/api")

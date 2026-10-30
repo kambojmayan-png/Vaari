@@ -3,10 +3,11 @@
 import time
 from datetime import timezone
 from typing import Any
+
 from sqlalchemy.orm import Session
+
 from app import clock
 from app.config import settings
-from app.enums import from_x100
 from app.event_log import log_event
 from app.models import Centre, Machine, Plot, Request, Slot
 from app.scheduler.plan import (
@@ -14,8 +15,10 @@ from app.scheduler.plan import (
     ExistingSlot,
     MachineIn,
     RequestIn,
-    Settings as SchedulerSettings,
     plan,
+)
+from app.scheduler.plan import (
+    Settings as SchedulerSettings,
 )
 from app.tokens import new_service_code, new_token
 

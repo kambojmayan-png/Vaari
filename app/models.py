@@ -1,7 +1,7 @@
 """SQLAlchemy ORM models for Vaari (Contract Section 6)."""
 
 import json
-from datetime import date, datetime
+
 from sqlalchemy import (
     Boolean,
     Column,
@@ -14,6 +14,7 @@ from sqlalchemy import (
     Text,
     TypeDecorator,
 )
+
 from app.db import Base
 
 
@@ -69,6 +70,9 @@ class Machine(Base):
     active_to = Column(Date, nullable=True)
     status = Column(String, nullable=False, default="active")
     link_token = Column(String, unique=True, nullable=False)
+    # Pilot v0.2: driver links expire and can be turned off. Null expiry = no expiry (older rows).
+    link_expires_at = Column(DateTime, nullable=True)
+    link_revoked_at = Column(DateTime, nullable=True)
 
 
 class Farmer(Base):
@@ -210,6 +214,9 @@ class ServiceRecord(Base):
     record_hash = Column(String, nullable=False)
     hash_version = Column(String, nullable=False, default="v1")
     generated_at = Column(DateTime, nullable=False)
+    # Pilot v0.2: record links expire and can be turned off. Not part of the record hash.
+    token_expires_at = Column(DateTime, nullable=True)
+    token_revoked_at = Column(DateTime, nullable=True)
 
 
 class MessageLog(Base):
@@ -235,3 +242,30 @@ class EventLog(Base):
     event = Column(String, nullable=False)
     payload_json = Column(JsonText, nullable=True)
     at = Column(DateTime, nullable=False)
+
+
+class UserAccount(Base):
+    """A person who signs in: an operator at the centre or an officer (pilot v0.2)."""
+
+    __tablename__ = "user_account"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    username = Column(String, unique=True, nullable=False)
+    password_hash = Column(String, nullable=False)
+    role = Column(String, nullable=False)  # operator | officer
+    active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime, nullable=False)
+    last_login_at = Column(DateTime, nullable=True)
+
+
+class AuthSession(Base):
+    """A signed-in session. Only a SHA-256 of the session id is stored (pilot v0.2)."""
+
+    __tablename__ = "auth_session"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    sid_sha256 = Column(String, unique=True, nullable=False)
+    user_id = Column(Integer, ForeignKey("user_account.id"), nullable=False, index=True)
+    created_at = Column(DateTime, nullable=False)
+    expires_at = Column(DateTime, nullable=False)
+    revoked_at = Column(DateTime, nullable=True)

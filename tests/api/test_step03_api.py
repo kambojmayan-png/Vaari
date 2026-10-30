@@ -1,6 +1,5 @@
 """API tests for Step 03: requests, machines and plots."""
 
-import pytest
 
 
 def test_request_lifecycle_crud(client, auth_headers):

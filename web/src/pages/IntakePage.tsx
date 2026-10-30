@@ -14,7 +14,8 @@ import {
 } from '../api';
 import { triggerReauth } from '../components/PasscodeGate';
 import { friendlyError } from '../errors';
-import type { IntakeOut, IntakeConfirmError } from '../types';
+import type { Health, IntakeOut, IntakeConfirmError } from '../types';
+import ReaderBanner from '../components/ReaderBanner';
 
 const LOW_CONF_THRESHOLD = 0.8;
 
@@ -87,7 +88,10 @@ export default function IntakePage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
 
-  const [readerMode, setReaderMode] = useState<string>('mock');
+  const [, setReaderMode] = useState<string>('mock');
+  // Pilot Part 5: turn a page photographed sideways before it is stored and read
+  const [rotate, setRotate] = useState<0 | 90 | 180 | 270>(0);
+  const [health, setHealth] = useState<Health | null>(null);
   const [villages, setVillages] = useState<string[]>([
     'Pind Kalan',
     'Bhucho Khurd',
@@ -120,7 +124,10 @@ export default function IntakePage() {
   // Load initial health & villages
   useEffect(() => {
     getHealth()
-      .then((h) => setReaderMode(h.reader))
+      .then((h) => {
+        setReaderMode(h.reader);
+        setHealth(h);
+      })
       .catch(() => {});
     getRequests()
       .then((reqs) => {
@@ -181,7 +188,7 @@ export default function IntakePage() {
     setPhotoUrl(localObjUrl);
 
     try {
-      const uploadedDraft = await uploadRegisterPhoto(file);
+      const uploadedDraft = await uploadRegisterPhoto(file, rotate);
       setDraft(uploadedDraft);
       setReaderMode(uploadedDraft.reader);
       setRows(buildEditableRows(uploadedDraft));
@@ -366,19 +373,8 @@ export default function IntakePage() {
         </div>
       </div>
 
-      {/* 1. Always-visible Privacy Warning Banner */}
-      <div
-        className="outcome-banner outcome-warning"
-        id="intake-privacy-banner"
-        style={{ justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem' }}
-      >
-        <span>
-          <strong>Privacy Rule:</strong> Only synthetic pages, or pages with the phone column covered. No real register page may go to a hosted model.
-        </span>
-        {(readerMode === 'mock' || draft?.reader === 'mock') && (
-          <Badge name="reader: mock" id="intake-mock-badge" />
-        )}
-      </div>
+      {/* 1. Always-visible banner: which reader, and where photos go */}
+      <ReaderBanner health={health} draftReader={draft?.reader ?? null} />
 
       {/* 2. File / Camera Upload Input */}
       <div className="card new-request-card" id="intake-upload-box">
@@ -389,6 +385,22 @@ export default function IntakePage() {
               Select a photo or capture from camera. A draft is never a request until confirmed.
             </span>
           </div>
+        </div>
+        <div className="mt-2">
+          <label className="attr-label" htmlFor="intake-rotate">
+            Turn the photo before reading{' '}
+            <select
+              id="intake-rotate"
+              value={rotate}
+              onChange={e => setRotate(Number(e.target.value) as 0 | 90 | 180 | 270)}
+              disabled={uploading}
+            >
+              <option value={0}>No turn (upright)</option>
+              <option value={90}>Turn right (90°)</option>
+              <option value={180}>Upside down (180°)</option>
+              <option value={270}>Turn left (90°)</option>
+            </select>
+          </label>
         </div>
         <div className="mt-2">
           <input

@@ -25,6 +25,9 @@ test('Full Phase 3 End-to-End Scenario (TESTING.md Section 7: Steps 1 to 8)', as
   await expect(page.locator('#intake-privacy-banner')).toContainText(
     'No real register page may go to a hosted model',
   );
+  // Part 5: the banner names the reader in use and where photos go.
+  await expect(page.locator('#intake-reader-name')).toContainText('Reader in use: mock');
+  await expect(page.locator('#intake-reader-destination')).toHaveText('No photo leaves this server.');
 
   const registerFixture = path.resolve(__dirname, '../../tests/fixtures/sample_field.jpg');
   await page.locator('#intake-file-input').setInputFiles(registerFixture);
@@ -147,12 +150,15 @@ test('Full Phase 3 End-to-End Scenario (TESTING.md Section 7: Steps 1 to 8)', as
 });
 
 test.afterAll(async () => {
+  // tasks.py e2e passes the Python it runs the server with. CI has no .venv, so the old
+  // hard-coded .venv path failed there and left the database half-reset for later specs.
   const py =
-    process.platform === 'win32'
+    process.env.VAARI_PYTHON ||
+    (process.platform === 'win32'
       ? path.resolve(__dirname, '../../.venv/Scripts/python.exe')
-      : path.resolve(__dirname, '../../.venv/bin/python');
+      : path.resolve(__dirname, '../../.venv/bin/python'));
   const resetPy = `
-from app.db import Base, get_engine, get_session_factory
+from app.db import get_engine, get_session_factory
 from app.seed.seed import seed_data
 from sqlalchemy import text
 from pathlib import Path
@@ -167,7 +173,8 @@ with engine.begin() as conn:
         conn.execute(text(f'DROP TABLE IF EXISTS "{t}";'))
     conn.execute(text("PRAGMA foreign_keys = ON;"))
 
-Base.metadata.create_all(bind=engine)
+from app.migrate import ensure_schema
+ensure_schema(engine)  # rebuild through the migrations, as the server expects
 with get_session_factory()() as session:
     seed_data(session)
 

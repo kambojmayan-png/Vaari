@@ -1,0 +1,159 @@
+{
+  "synthetic": true,
+  "anchor_today": "2026-10-25",
+  "gurmukhi_font": true,
+  "rows": [
+    {
+      "row": 1,
+      "written": {
+        "phone": "9000001001",
+        "name": "Amarjit Dhillon",
+        "village": "Talwandi Sabo",
+        "acres": "1.5",
+        "service_type": "Baler",
+        "harvest_date": ""
+      },
+      "fields": {
+        "phone": "9000001001",
+        "name": "Amarjit Dhillon",
+        "village": "Talwandi Sabo",
+        "acres": 1.5,
+        "service_type": "baler",
+        "harvest_date": null
+      }
+    },
+    {
+      "row": 2,
+      "written": {
+        "phone": "9000001002",
+        "name": "Gurpreet Brar",
+        "village": "Rampura Phul",
+        "acres": "4",
+        "service_type": "ਮਲਚਰ",
+        "harvest_date": "੧੪/੧੧"
+      },
+      "fields": {
+        "phone": "9000001002",
+        "name": "Gurpreet Brar",
+        "village": "Rampura Phul",
+        "acres": 4.0,
+        "service_type": "mulcher",
+        "harvest_date": "2026-11-14"
+      }
+    },
+    {
+      "row": 3,
+      "written": {
+        "phone": "9000001003",
+        "name": "Charanjit Sandhu",
+        "village": "Kot Shamir",
+        "acres": "3.5",
+        "service_type": "ਮਲਚਰ",
+        "harvest_date": "20 ਨਵੰਬਰ"
+      },
+      "fields": {
+        "phone": "9000001003",
+        "name": "Charanjit Sandhu",
+        "village": "Kot Shamir",
+        "acres": 3.5,
+        "service_type": "mulcher",
+        "harvest_date": "2026-11-20"
+      }
+    },
+    {
+      "row": 4,
+      "written": {
+        "phone": "9000001004",
+        "name": "Kuldeep Brar",
+        "village": "Goniana Mandi",
+        "acres": "੭.੫",
+        "service_type": "Happy Seeder",
+        "harvest_date": "5/11"
+      },
+      "fields": {
+        "phone": "9000001004",
+        "name": "Kuldeep Brar",
+        "village": "Goniana Mandi",
+        "acres": 7.5,
+        "service_type": "happy_seeder",
+        "harvest_date": "2026-11-05"
+      }
+    },
+    {
+      "row": 5,
+      "written": {
+        "phone": "90000 01005",
+        "name": "Charanjit Sidhu",
+        "village": "Goniana Mandi",
+        "acres": "7.5 ਕਿੱਲੇ",
+        "service_type": "ਸੁਪਰ seeder",
+        "harvest_date": ""
+      },
+      "fields": {
+        "phone": "9000001005",
+        "name": "Charanjit Sidhu",
+        "village": "Goniana Mandi",
+        "acres": 7.5,
+        "service_type": "super_seeder",
+        "harvest_date": null
+      }
+    },
+    {
+      "row": 6,
+      "written": {
+        "phone": "9000001006",
+        "name": "Sukhwinder Gill",
+        "village": "Talwandi Sabo",
+        "acres": "੭.੫",
+        "service_type": "ਬੇਲਰ",
+        "harvest_date": ""
+      },
+      "fields": {
+        "phone": "9000001006",
+        "name": "Sukhwinder Gill",
+        "village": "Talwandi Sabo",
+        "acres": 7.5,
+        "service_type": "baler",
+        "harvest_date": null
+      }
+    },
+    {
+      "row": 7,
+      "written": {
+        "phone": "9000001007",
+        "name": "Manjit Brar",
+        "village": "Sangat Kalan",
+        "acres": "੨.੫",
+        "service_type": "Super Seeder",
+        "harvest_date": "੨੬/੧੦"
+      },
+      "fields": {
+        "phone": "9000001007",
+        "name": "Manjit Brar",
+        "village": "Sangat Kalan",
+        "acres": 2.5,
+        "service_type": "super_seeder",
+        "harvest_date": "2026-10-26"
+      }
+    },
+    {
+      "row": 8,
+      "written": {
+        "phone": "90000 01008",
+        "name": "Rajinder Dhillon",
+        "village": "Talwandi Sabo",
+        "acres": "2",
+        "service_type": "Baler",
+        "harvest_date": "19/10"
+      },
+      "fields": {
+        "phone": "9000001008",
+        "name": "Rajinder Dhillon",
+        "village": "Talwandi Sabo",
+        "acres": 2.0,
+        "service_type": "baler",
+        "harvest_date": "2026-10-19"
+      }
+    }
+  ]
+}

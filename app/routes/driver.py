@@ -2,13 +2,16 @@
 
 from datetime import date
 from typing import Any
+
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
+
 from app import clock
 from app.db import get_db
 from app.errors import VaariError
 from app.models import Machine, Slot
 from app.routes.common import serialize_slot
+from app.tokens import require_live_link
 
 router = APIRouter(prefix="/driver", tags=["driver"])
 
@@ -22,6 +25,7 @@ def get_driver_view(
     machine = session.query(Machine).filter_by(link_token=machine_token).first()
     if machine is None:
         raise VaariError("NOT_FOUND", "Machine not found.", 404)
+    require_live_link(machine.link_expires_at, machine.link_revoked_at, "driver")
 
     target_date = date if date is not None else clock.today()
 

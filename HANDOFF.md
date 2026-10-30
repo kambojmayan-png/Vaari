@@ -210,3 +210,108 @@ python tasks.py serve
 ### Reader evaluation counts & model confidence note
 - From `examples/register_pages/EVAL.md` (page1 against MockRegisterReader, prompt v1): 6 total rows, 4 rows usable without edits, 1 wrong phone, 1 wrong acres, 0 wrong dates/services/villages/names, 0.05s per page.
 - **Important note on confidence:** Vision model confidence scores (0.0 to 1.0) are the model's own self-reported estimates and are not statistically calibrated probabilities. Failing validation cells are deterministically capped at 0.3.
+
+
+---
+
+## Pilot build (v0.2): one hiring centre
+
+Built from the "status and build brief for the backend work" on 30 October 2026, by Claude (Opus 5.5) working in a cloud workspace. One branch per part, each starting from the one before, one commit per numbered item (Part 5 and 6 bullets are numbered here R1–R8 and S1–S2): `part-a-security` (A1–A5) → `part-b-data` (B6–B8) → `part-c-ops` (C9–C11) → `part-5-reader` (R1–R8) → `part-6-satellite-docs` (S1–S2) → `part-7-handoff` (this section, README and privacy notes). **Nothing was pushed.** The real output of every test run, item by item, is in [`notes/pilot-build-verification.md`](notes/pilot-build-verification.md).
+
+### How to run (exact commands)
+
+Development (unchanged, plus the new commands):
+
+```bash
+python tasks.py setup && python tasks.py reset && python tasks.py serve   # passcode change-me, development only
+python tasks.py test        # 376 tests
+python tasks.py e2e         # development pass, then a production sign-in pass
+python tasks.py reader-eval # writes docs/READER_EVAL.md for VAARI_READER
+```
+
+Production: follow [`docs/DEPLOY.md`](docs/DEPLOY.md) (Docker, `.env` from `.env.production.example`, `create-user`, HTTPS in front, `backup`/`restore`).
+
+### Definition of done (Part 7), checked on `part-7-handoff`
+
+| Item | Result |
+| --- | --- |
+| All tests pass | `376 passed` (pytest). `ruff check .`: all checks passed |
+| Web build | `tsc -b && vite build` passes |
+| e2e | Development pass `8 passed, 2 skipped` (the skipped two are the production-only specs); production pass `2 passed` |
+| Refuses to start in production with unsafe settings | Yes. Unit tests, plus by hand in Docker: empty or default `VAARI_SECRET_KEY` gives the `refused_to_start` log line and the container never becomes healthy |
+| Fresh clone deploys with Docker following DEPLOY.md | Yes, with one caveat: a fresh `git clone` of `part-7-handoff` was taken through DEPLOY.md steps 3 to 8 (check-config, up to healthy, `/api/ready`, two accounts, role checks, passcode 401, register upload falls back with EXIF stripped, backup, stop, verify, restore, data back, `migrate --status` at head). Docker Hub is blocked in the build workspace, so `python:3.12-slim` and `node:22-slim` were replaced by local Ubuntu 24.04 stand-ins through the `PYTHON_IMAGE` / `NODE_IMAGE` build arguments. The CI `docker` job will be the first build on the official images |
+| Gemini reader evaluated on synthetic pages | **Not done.** The reader, its probe and the evaluation are built and tested with fakes, and the pass bar is fixed, but the Gemini API was unreachable from the build workspace and there was no key. `docs/READER_EVAL.md` says "Not run" in the Gemini section |
+| HANDOFF updated | This section |
+
+### What changed (each item with the test that proves it)
+- **A1 Production mode.** `VAARI_ENV=production` refuses to start with an empty, default or short (<16) passcode, or with a hosted reader enabled without `VAARI_ALLOW_HOSTED_READER_IN_PRODUCTION=true`. All problems are listed at once. `python tasks.py check-config` prints them (`tests/unit/test_production_mode.py`).
+- **A2 Accounts and roles.** `operator` and `officer` accounts with argon2id hashes, HMAC-signed sessions that expire (12 h) and are revoked on sign-out or when the account is disabled, role checks on every protected route, constant-time comparisons (`hmac.compare_digest`) for passcode, slot tokens and signatures, and `python tasks.py create-user`. The shared passcode works only in development. Production sign-in is tested in a second Playwright pass (`tests/api/test_accounts.py`, `web/e2e/production_login.spec.ts`). **Judgement call:** after A2 the A1 start-up check looks at `VAARI_SECRET_KEY` (min 32) instead of the passcode, because the passcode is switched off in production.
+- **A3 Rate limits and lockout.** Sign-in: 10 attempts per address per minute, and a username is locked for 15 minutes after 5 wrong passwords (same answer for unknown usernames). Uploads: 30 per address per minute, refused in middleware before the body is read. 429 `RATE_LIMITED` with `Retry-After` (`tests/api/test_rate_limits.py`).
+- **A4 Link expiry and revocation.** Driver links expire after 30 days and record links after 365 (configurable). Operators can rotate or turn off a driver link (rotation also replaces the slot tokens it handed out) and turn off or reissue a record link from the Desk; the record hash never changes. 410 `LINK_EXPIRED` (`tests/api/test_link_expiry.py`, `web/e2e/links.spec.ts`).
+- **A5 CORS and security headers.** No CORS unless `VAARI_CORS_ORIGINS` names exact origins (production refuses `*` and plain http). Every response gets nosniff, frame DENY, `Referrer-Policy: no-referrer`, a Permissions-Policy, COOP/CORP and a Content-Security-Policy; API responses are `no-store`; production adds HSTS. The browser test checks the CSP blocks nothing the app loads (`tests/api/test_security_headers.py`, `web/e2e/links.spec.ts`).
+- **B6 Alembic migrations.** Baseline `0001` is exactly v0.1.0's schema; `0002` adds Part A's changes. Start-up runs `upgrade head` instead of `create_all`; an older create_all database is stamped and upgraded with its data kept. A test asserts a fresh migration matches the models, and every test database is now built by the migrations. `reset`/`seed` refuse in production without `--yes-delete-everything` (`tests/unit/test_migrations.py`).
+- **B7 Photo storage and EXIF stripping.** All photo files go through `app/storage` (`LocalDiskStore` now; an S3-compatible store is a refused placeholder). Every upload is re-encoded as a clean JPEG with orientation applied and all metadata, including GPS, removed; decompression bombs and undecodable files get 422 (`tests/unit/test_photo_storage.py`).
+- **B8 Backup and restore.** `python tasks.py backup` uses SQLite's online backup (tested while another connection holds a read transaction and with writes only in the WAL), copies photos and writes a SHA-256 manifest; `restore` verifies everything first, keeps the previous data aside, and upgrades older backups. Tested: restore after deleting data, restore into an empty place, damaged/missing/extra files refused with nothing changed, older-schema restore, pruning, and the two commands (`tests/unit/test_backup.py`).
+- **C9 Structured logs and readiness.** JSON lines with request IDs, route templates instead of paths, a redaction filter, uvicorn access log off, safe 500 handler, and `GET /api/ready`. A test runs a full job (name, phone, photos, record, message, register page) and asserts none of the name, phone, tokens, village, passcode or image bytes appear in any log line (`tests/api/test_logging_and_ready.py`).
+- **C10 Docker.** Non-root two-stage `Dockerfile`, `docker-compose.yml` with a data volume and a locked-down container, `.env.production.example` and `docs/DEPLOY.md`. The mock reader refuses in production, so it can never put invented farmers on the confirmation screen (`tests/unit/test_deploy_files.py`, `tests/api/test_mock_reader_production.py`). **Verified by hand in this environment** by following DEPLOY.md steps 3 to 8: `check-config`, `up -d` to `healthy`, `/api/ready`, running as uid 10001, `create-user`, sign-in, passcode refused (401), security headers and HSTS, `backup`, `stop`, `restore --verify-only`, `restore --force`, data back as it was, and refusal to start with `VAARI_SECRET_KEY=change-me`. Docker Hub is blocked here, so the build used locally made Ubuntu 24.04 stand-ins for `python:3.12-slim` and `node:22-slim` through the `PYTHON_IMAGE`/`NODE_IMAGE` build arguments. The official base images were **not** used in that test.
+- **C11 CI.** New jobs: ruff, pip-audit, npm audit (high and above), Playwright e2e (both passes), and Docker build plus smoke test, alongside the existing pytest and web build. Each step was run here by hand with the same commands (ruff clean, pip-audit "No known vulnerabilities found", npm audit exit 0 at `--audit-level=high`, e2e 6 + 2 passed, the Docker smoke steps against the locally built image). Ruff found one real bug: `app/scheduler/plan.py` used `timezone` without importing it, so a request with a naive `created_at` would have crashed the scheduler. Fixed, with a test (`tests/unit/test_scheduler_rules.py::test_naive_created_at_is_treated_as_utc`). The rest of the ruff changes are unused imports and import order. **The workflow itself has not run on GitHub** (nothing was pushed).
+- **R1 Reader interface.** `RegisterReader` is the only thing the app knows. Implementations: `mock`, `gemini_demo` and a `custom` stub (same draft format, tested against a fake endpoint). No model name is hard-coded; `VAARI_VISION_MODEL` and `GEMINI_API_KEY` are required when the hosted reader is on, and the key travels in a header, not the URL (`tests/unit/test_reader_interface.py`).
+- **R2 Start-up probe.** A remote reader gets one synthetic image at start-up, in the background; provider, model, latency and outcome appear in `/api/health` `reader_detail.probe`, and a failure shows the reader as `down` (`tests/unit/test_reader_probe.py`). Tested with a fake reader only: **no real Gemini call was made**.
+- **R3 Intake banner.** The intake screen always names the reader and says where photos go, in red when they go to Google; it shows the type-the-rows fallback when the reader is down (`web/e2e/full_loop.spec.ts`, `web/e2e/reader_banner.spec.ts`).
+- **R4 Preprocessing.** Every reader gets an upright, 1000–2000 px, greyscale, contrast-stretched copy; operators can turn a sideways page at upload. Tested on synthetic pages for each step and end to end with a spy reader (`tests/unit/test_preprocess.py`). Whether it improves Gemini's accuracy is **not measured** (no Gemini run).
+- **R5 Gurmukhi digits and mixed entries.** Every Gurmukhi digit, phone forms (labels, +91, 91, 0, dashes, danda), acres with Punjabi and English unit words and fractions, kanal conversion with a non-blocking warning, mixed-script service names and Punjabi/English month names, each with a unit test; unreadable cells stay flagged, never guessed (`tests/unit/test_gurmukhi_and_mixed_entries.py`, 55 cases). **Should be checked by a Punjabi speaker:** the unit words and month spellings in `app/intake/normalize.py`.
+
+### Contract changes (additive only, with the reason)
+- New settings `VAARI_ENV`, `VAARI_ALLOW_HOSTED_READER_IN_PRODUCTION` (A1). See `docs/CONTRACT.md` §15.
+- A2: tables `user_account`, `auth_session`; routes `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/me`; error code `FORBIDDEN` (403); health fields `env`, `auth`; settings `VAARI_SECRET_KEY`, `VAARI_SESSION_HOURS`. Officers get `driver_path: ""` from `GET /api/machines` (same shape, value hidden). In production the `X-Vaari-Passcode` header is refused (a behaviour change the brief asked for). Slot actions with no credential now give 401 before 404.
+- A3: error code `RATE_LIMITED` (429, `Retry-After`); settings `VAARI_LOGIN_RATE_PER_MIN`, `VAARI_LOGIN_LOCKOUT_FAILURES`, `VAARI_LOGIN_LOCKOUT_MINUTES`, `VAARI_UPLOAD_RATE_PER_MIN`, `VAARI_TRUST_PROXY`.
+- A4: columns `machine.link_expires_at`, `machine.link_revoked_at`, `service_record.token_expires_at`, `service_record.token_revoked_at`; error `LINK_EXPIRED` (410); routes `POST /api/machines/{id}/link/rotate|revoke`, `POST /api/slots/{id}/record/revoke|reissue`; `MachineOut.driver_link_status`, `MachineOut.driver_link_expires_at`; settings `VAARI_DRIVER_LINK_DAYS`, `VAARI_RECORD_LINK_DAYS`. A database made by v0.1.0 lacks the new columns: until B6 (migrations) it needs `python tasks.py reset`; from B6 on `alembic upgrade` adds them.
+- B7 (**not additive, requested by the brief**): photo and register-page SHA-256 and size are now of the stored, metadata-free JPEG instead of the raw upload; stored files are always `.jpg`; setting `VAARI_PHOTO_STORE`. Records made before B7 still verify, because their hashes were computed from what was stored then.
+- R5: new non-blocking issue text for kanal conversion; more inputs accepted by `validate_row` (no output shape change).
+- R4: `POST /api/intake/register-photo` form field `rotate` (optional, default 0).
+- R3: `IntakeOut.reader_name`, `IntakeOut.third_party`.
+- R2: health field `reader_detail` (with `probe`); setting `VAARI_READER_PROBE`.
+- R1: `VAARI_READER` values `mock | gemini_demo | custom` (`hosted` = `gemini_demo`); settings `VAARI_CUSTOM_READER_URL`, `VAARI_CUSTOM_READER_TOKEN`; health `reader` may be `custom`; Anthropic provider removed.
+- C11: `ruff.toml`, `ruff` in `requirements-dev.txt`, CI jobs above; no API change.
+- C10: the mock reader refuses in production (`reader: "down"` in health); new files `Dockerfile`, `.dockerignore`, `docker-compose.yml`, `.env.production.example`, `docs/DEPLOY.md`.
+- C9: route `GET /api/ready`; error codes `INTERNAL_ERROR` (500) and `NOT_READY` (503); `X-Request-ID` on every response.
+- B8: tasks `backup`, `restore`; setting `VAARI_BACKUP_DIR`; `backups/` and `*.pre-restore-*` are git-ignored.
+- B6: `alembic_version` table; new tasks `migrate [--status]`, `db-revision`. The contract's "No Alembic / create_all" line is replaced (the brief asked for it).
+- A5: setting `VAARI_CORS_ORIGINS`; security headers on every response (see `docs/CONTRACT.md` §15.6). No response bodies changed.
+
+### Libraries added beyond the contract, and why
+- `argon2-cffi` (A2): argon2id password hashing, as the brief asked ("argon2 or bcrypt"). The standard library has no memory-hard password hash.
+- `alembic` (B6): schema migrations, as the brief asked.
+- `pillow` (B7): decoding, orientation and re-encoding images to strip EXIF; also used in Part 5 preprocessing. Nothing in the standard library decodes JPEG.
+
+### What was cut
+- **Anthropic as a hosted reader provider** (R1). The brief asks for Gemini for the demo and a custom model later; keeping a second third-party path doubled the privacy surface for no pilot need.
+- **Error tracking service** (Sentry or similar): not built. It would be a new dependency sending data to a third party. Unhandled errors are logged as JSON with type, location and request ID, so a log shipper can alert on `"event": "unhandled_error"`.
+
+- **Physical-world items from Part 2 that the brief did not ask for:** WhatsApp Business API, an offline driver queue and Postgres are still not built.
+
+### What was not verified
+- **Gemini on real requests.** No call to Gemini was made. The request format (header key, `responseSchema`, `generationConfig`) follows Google's REST API as documented, but whether the chosen model accepts `responseSchema` as written, and its accuracy on the synthetic set, are unknown until `python tasks.py reader-eval` is run with a key. Expect the first run to need the schema or prompt adjusted.
+- **Official Docker base images and GitHub Actions.** The Dockerfile was built on stand-in base images, and the CI workflow has not run on GitHub (nothing was pushed). Both should be watched on the first push.
+- **Caddy / HTTPS set-up** in DEPLOY.md step 6 was not tested here.
+- **Real phones in production mode.** Camera and GPS over HTTPS were verified in v0.1 (phase 2); the production sign-in, link expiry and rotation screens were tested in headless Chromium only.
+- **Punjabi wording.** The new Punjabi unit words, month spellings and intake banner should be checked by a native speaker, as the contract already asks for the message templates.
+- **Load.** Rate limits were tested for correctness, not under load; counts are per process.
+- **Python version.** Tests ran on Python 3.13 here; CI and the Docker image use 3.12.
+
+### Follow-ups after the handoff (branch `part-8-followups`)
+- **Merged `main` 23aac6a** ("default hosted model gemini-3.5-flash-lite with auto-prefix"). Conflict in `app/intake/hosted.py`: the pilot rule of **no default model** was kept (the brief asks for no hard-coded model names), and main's prefix normalisation was kept as `normalize_model_name` (`3.5-flash-lite` → `gemini-3.5-flash-lite`, `models/gemini-x` → `gemini-x`). Set `VAARI_VISION_MODEL` to the model you want.
+- **Fixed Driver View and Record View in the navbar.** They pointed at made-up tokens (`/driver/demo-machine`, `/record/demo-token`), so they always showed "That item was not found" / "Service Record Not Found". The server was never down. They now open `/driver` (pick a machine, then its real driver view) and `/record` (completed jobs, then their real records), both for signed-in operators. A wrong driver link now says "Link not working" instead of "Connection Issue" (`web/e2e/nav_pickers.spec.ts`). Frontend routes `/driver` and `/record` are new (additive); no API change.
+
+- **CI browser-test failure fixed (branch `part-9-ci-e2e-fix`).** The first GitHub Actions run on `integrate-pilot-v0.2` (run 41037924156) failed the Playwright job; every other job passed, including the Docker build and smoke test on the official images. Cause: `web/e2e/full_loop.spec.ts` and `screenshots.spec.ts` (from v0.1) reset the database with a hard-coded `.venv/bin/python`, which does not exist on the CI runner. They failed, and left the database half-reset, so the two `tier0_loop` specs after them failed too. Fix: `tasks.py e2e` passes its Python as `VAARI_PYTHON` and the specs use it, and their reset now rebuilds through the migrations instead of `create_all`. Reproduced and verified with a fresh clone, Python 3.12, no `.venv` and `CI=true`: development pass 11 passed, production pass 2 passed.
+- **Gemini evaluation recorded by the integrator** (`gemini-3.5-flash-lite`): FAIL against the bar, with 0 silent phone and 0 silent acres errors. 4 of 6 pages near perfect; `synth_02` lost the acres, name and date columns, and `synth_03` returned 1 of 8 rows. See `docs/READER_EVAL.md`. The cause is not known yet, because the raw model answers are not saved.
+
+### Things the next person must know
+1. **Sign-in.** In production there is no passcode. Create accounts with `python tasks.py create-user`. The frontend switches to a username/password form when `/api/health` says `auth: "accounts"`.
+2. **`VAARI_SECRET_KEY` signs every session.** Changing it signs everyone out. Keep it in `.env` only.
+3. **Schema changes go through Alembic.** Edit the models, then `python tasks.py db-revision "what changed"`, then commit the new file in `migrations/versions/`. `tests/unit/test_migrations.py` fails if models and migrations drift. Never edit `0001_baseline.py`: it is v0.1.0 exactly.
+4. **Photo hashes changed meaning in B7.** They are of the stored, cleaned JPEG. This is the only non-additive contract change, and the brief asked for it.
+5. **Readers.** Only `RegisterReader` and `get_reader()` may be imported outside `app/intake/`. The mock refuses in production. `custom` is the place for a real model ([FUTURE_CUSTOM_READER.md](docs/FUTURE_CUSTOM_READER.md)).
+6. **Logs.** Never pass personal data into a log call. `extra={"fields": ...}` only lets allow-listed keys through (`app/logging_setup.ALLOWED_FIELDS`), and `test_no_names_phones_tokens_or_images_in_logs` will catch most mistakes.
+7. **The e2e screenshot spec rewrites `docs/screenshots/`** on every run. Revert those files unless you meant to update them.
+8. **Branches.** Each part branch starts from the one before. `part-8-followups` contains everything plus `main` up to 23aac6a, so merging it into `main` is a fast-forward.

@@ -1,7 +1,7 @@
 """Test T4: seed counts invariant on different dates."""
 
 import pytest
-from app import clock
+
 from app.models import Machine, Request, Slot
 from app.seed.seed import reset_db
 

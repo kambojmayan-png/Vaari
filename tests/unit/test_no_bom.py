@@ -1,7 +1,7 @@
 """Test that no tracked files start with a UTF-8 BOM (Item 3)."""
 
-from pathlib import Path
 import subprocess
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 

@@ -13,7 +13,10 @@ import type {
   IntakeConfirmResult,
   IntakeConfirmRowIn,
   IntakeOut,
+  LoginResult,
   MachineOut,
+  MeResult,
+  RecordLinkOut,
   PatchRequestBody,
   RecordOut,
   RecordVerify,
@@ -42,8 +45,25 @@ export class ApiError extends Error {
 }
 
 // ── Helpers ──────────────────────────────────────────────────
+// Development mode: the shared demo passcode (auto-filled for the demo screens).
+// Production mode: a signed session token from POST /api/auth/login. The passcode
+// is never sent once a session token exists.
+const SESSION_KEY = 'vaari_session';
+
 function getPasscode(): string | null {
   return sessionStorage.getItem('vaari_passcode') || 'change-me';
+}
+
+export function getSessionToken(): string | null {
+  return sessionStorage.getItem(SESSION_KEY);
+}
+
+export function setSessionToken(token: string): void {
+  sessionStorage.setItem(SESSION_KEY, token);
+}
+
+export function clearSessionToken(): void {
+  sessionStorage.removeItem(SESSION_KEY);
 }
 
 export function setPasscode(code: string): void {
@@ -57,8 +77,13 @@ export function clearPasscode(): void {
 function authHeaders(kind: 'passcode' | 'slot', token?: string): Record<string, string> {
   const h: Record<string, string> = {};
   if (kind === 'passcode') {
-    const pc = getPasscode();
-    if (pc) h['X-Vaari-Passcode'] = pc;
+    const session = getSessionToken();
+    if (session) {
+      h['Authorization'] = `Bearer ${session}`;
+    } else {
+      const pc = getPasscode();
+      if (pc) h['X-Vaari-Passcode'] = pc;
+    }
   } else if (kind === 'slot' && token) {
     h['X-Vaari-Slot-Token'] = token;
   }
@@ -90,6 +115,27 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 // ── Health (public) ──────────────────────────────────────────
 export function getHealth(): Promise<Health> {
   return request<Health>('/api/health');
+}
+
+// ── Auth (pilot v0.2) ───────────────────────────────────────
+export function login(username: string, password: string): Promise<LoginResult> {
+  return request<LoginResult>('/api/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password }),
+  });
+}
+
+export function getMe(): Promise<MeResult> {
+  return request<MeResult>('/api/auth/me', { headers: { ...authHeaders('passcode') } });
+}
+
+export async function logout(): Promise<void> {
+  try {
+    await request<void>('/api/auth/logout', { method: 'POST', headers: { ...authHeaders('passcode') } });
+  } finally {
+    clearSessionToken();
+  }
 }
 
 // ── Requests (passcode) ─────────────────────────────────────
@@ -164,6 +210,35 @@ export function patchMachine(
 }
 
 // ── Schedule (passcode) ──────────────────────────────────────
+// ── Link expiry and revocation (pilot v0.2) ─────────────────
+export function rotateDriverLink(machineId: number): Promise<MachineOut> {
+  return request<MachineOut>(`/api/machines/${machineId}/link/rotate`, {
+    method: 'POST',
+    headers: { ...authHeaders('passcode') },
+  });
+}
+
+export function revokeDriverLink(machineId: number): Promise<MachineOut> {
+  return request<MachineOut>(`/api/machines/${machineId}/link/revoke`, {
+    method: 'POST',
+    headers: { ...authHeaders('passcode') },
+  });
+}
+
+export function revokeRecordLink(slotId: number): Promise<RecordLinkOut> {
+  return request<RecordLinkOut>(`/api/slots/${slotId}/record/revoke`, {
+    method: 'POST',
+    headers: { ...authHeaders('passcode') },
+  });
+}
+
+export function reissueRecordLink(slotId: number): Promise<RecordLinkOut> {
+  return request<RecordLinkOut>(`/api/slots/${slotId}/record/reissue`, {
+    method: 'POST',
+    headers: { ...authHeaders('passcode') },
+  });
+}
+
 export function runSchedule(): Promise<ScheduleRunResult> {
   return request<ScheduleRunResult>('/api/schedule/run', {
     method: 'POST',
@@ -333,9 +408,10 @@ export async function downloadUsageCsv(): Promise<string> {
 }
 
 // ── Intake (passcode, Phase 3) ───────────────────────────────
-export function uploadRegisterPhoto(photo: File): Promise<IntakeOut> {
+export function uploadRegisterPhoto(photo: File, rotate: 0 | 90 | 180 | 270 = 0): Promise<IntakeOut> {
   const form = new FormData();
   form.append('photo', photo);
+  if (rotate) form.append('rotate', String(rotate));
   return request<IntakeOut>('/api/intake/register-photo', {
     method: 'POST',
     headers: { ...authHeaders('passcode') },

@@ -12,7 +12,7 @@ Status words: **Designed** (specified, not built), **Built**, **Measured** (buil
 | v0.4 | Scheduling optimisation | A routing solver behind the same interface, with road distances |
 | v0.5 | Messaging | WhatsApp Business flows, reminders, consent from the farmer's phone |
 | v0.6 | Security and privacy | Authentication, roles, audit chain, a compliant register reader |
-| v0.7 | Satellite intelligence | Harvest sensing and coverage, validated before it is trusted |
+| v0.7 | Satellite intelligence: future (v0.7), not built | Harvest sensing and coverage, validated before it is trusted ([design](FUTURE_SATELLITE.md)) |
 | v1.0 | Pilot production | A stable deployment with one district's integrations |
 
 ## Validation before code
@@ -34,7 +34,7 @@ Scope, hours, kill order and the readiness checklist are in [BUILD_PLAN.md](BUIL
 
 - **Tier 0:** requests, machines, deterministic scheduler with inclusive deadlines and reason codes, slot lifecycle enforced by the backend, service records, four basic views, on-screen Punjabi message.
 - **Tier 1:** register photo → draft → human confirmation; prefilled `wa.me` and `tel:` links [agri_rent]; photo and position evidence with plausibility, too-fast and exact-duplicate checks; the farmer's service code [delivery-code practice in proof-of-delivery tools].
-- **Tier 2, only if stable:** map panel, officer analytics, nearest-centre list, coverage trace, satellite module, review step.
+- **Tier 2, only if stable:** map panel, officer analytics, nearest-centre list, coverage trace, satellite module (future (v0.7), not built), review step.
 
 ## v0.2 — Pilot hardening
 
@@ -75,9 +75,9 @@ Scope, hours, kill order and the readiness checklist are in [BUILD_PLAN.md](BUIL
 - Source grounding: show the cropped region of the page beside each drafted field [Nutrient's extraction guide].
 - A review of the whole design against India's data-protection rules.
 
-## v0.7 — Satellite intelligence
+## v0.7 — Satellite intelligence (future (v0.7), not built)
 
-Validated before it is trusted, and never allowed to decide anything.
+Validated before it is trusted, and never allowed to decide anything. The design, data sources, limits and validation plan are in [FUTURE_SATELLITE.md](FUTURE_SATELLITE.md). No satellite code exists in the repository.
 
 - Harvest sensing per registered plot: an interval, never a day; the stated date wins; reported as "k of N intervals held" with mean error and bias [harvest_time_estimate].
 - Orbit rules as code and as tests: same-MGRS-tile pairing, 10 m bands resampled down to 20 m, index and area invariants [savanna-burn-mapper]. Post-harvest baselines only [Digital Earth Africa's caveat].

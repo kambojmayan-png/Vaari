@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { patchMachine, ApiError } from '../api';
+import { patchMachine, rotateDriverLink, revokeDriverLink, ApiError } from '../api';
 import { friendlyError } from '../errors';
 import type { MachineOut, ScheduleDay } from '../types';
 
@@ -28,6 +28,23 @@ export default function MachinesTab({ machines, schedule, todayDate, onRefreshAl
       } else {
         setActionError('Failed to toggle machine status.');
       }
+    } finally {
+      setTogglingId(null);
+    }
+  };
+
+  const handleLinkAction = async (machine: MachineOut, action: 'rotate' | 'revoke') => {
+    if (action === 'revoke' && !window.confirm(`Turn off the driver link for ${machine.name}? The phone holding it stops working at once.`)) {
+      return;
+    }
+    setTogglingId(machine.id);
+    setActionError(null);
+    try {
+      if (action === 'rotate') await rotateDriverLink(machine.id);
+      else await revokeDriverLink(machine.id);
+      onRefreshAll();
+    } catch (err) {
+      setActionError(err instanceof ApiError ? friendlyError(err.error_code) || err.message : 'Failed to change the driver link.');
     } finally {
       setTogglingId(null);
     }
@@ -134,6 +151,38 @@ export default function MachinesTab({ machines, schedule, todayDate, onRefreshAl
                   >
                     Open
                   </a>
+                </div>
+                <div className="driver-link-row" id={`driver-link-state-${m.id}`}>
+                  <span className={`status-pill ${m.driver_link_status === 'active' || !m.driver_link_status ? '' : 'pill-red'}`}>
+                    {m.driver_link_status === 'revoked'
+                      ? 'link turned off'
+                      : m.driver_link_status === 'expired'
+                      ? 'link expired'
+                      : 'link active'}
+                  </span>
+                  {m.driver_link_expires_at && m.driver_link_status === 'active' && (
+                    <span className="attr-label">until {m.driver_link_expires_at.slice(0, 10)}</span>
+                  )}
+                  <button
+                    id={`btn-rotate-link-${m.id}`}
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    disabled={togglingId === m.id}
+                    onClick={() => handleLinkAction(m, 'rotate')}
+                  >
+                    New link
+                  </button>
+                  {m.driver_link_status !== 'revoked' && (
+                    <button
+                      id={`btn-revoke-link-${m.id}`}
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      disabled={togglingId === m.id}
+                      onClick={() => handleLinkAction(m, 'revoke')}
+                    >
+                      Turn off link
+                    </button>
+                  )}
                 </div>
               </div>
 

@@ -1,22 +1,17 @@
 """Pydantic v2 schemas for request and response validation (Contract Section 11)."""
 
-from datetime import date, datetime
-from decimal import Decimal
 import re
+from datetime import date
+from decimal import Decimal
 from typing import Any
-from pydantic import BaseModel, ConfigDict, field_validator, model_validator
+
+from pydantic import BaseModel, ConfigDict, field_validator
+
 from app.enums import (
-    LocationSource,
     MachineStatus,
     NotServedReason,
-    ReasonCode,
-    RecordPositionState,
-    RequestSource,
-    RequestStatus,
     ServiceType,
-    SlotStatus,
 )
-
 
 PHONE_PATTERN = re.compile(r"^[6-9]\d{9}$")
 
@@ -32,7 +27,7 @@ def validate_acres_val(v: float | Decimal) -> float:
     try:
         f = float(v)
     except Exception:
-        raise ValueError("Acres must be a valid number.")
+        raise ValueError("Acres must be a valid number.") from None
     if f < 0.25 or f > 200.0:
         raise ValueError("Acres must be between 0.25 and 200.")
     # Check at most 2 decimal places
@@ -176,6 +171,9 @@ class MachineOut(BaseModel):
     active_from: date | None = None
     active_to: date | None = None
     driver_path: str
+    # Pilot v0.2 (additive)
+    driver_link_status: str = "active"  # active | expired | revoked
+    driver_link_expires_at: str | None = None
 
 
 # --- Plot Schemas ---

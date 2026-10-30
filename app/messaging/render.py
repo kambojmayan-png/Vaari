@@ -3,6 +3,7 @@
 import json
 from pathlib import Path
 from urllib.parse import quote
+
 from app import clock
 from app.enums import from_x100
 from app.models import Centre, Farmer, Machine, Plot, Request, Slot

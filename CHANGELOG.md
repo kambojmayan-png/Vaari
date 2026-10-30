@@ -4,6 +4,24 @@ All notable changes are recorded here. The format follows Keep a Changelog, and 
 
 ## [Unreleased]
 
+### Pilot build v0.2 (30 Oct 2026)
+- **A1 Production mode**: `VAARI_ENV=production` refuses to start with unsafe settings; new `python tasks.py check-config`.
+- **A2 Accounts and roles**: operator and officer accounts (argon2id), signed expiring sessions, role checks on every protected route, `create-user` / `disable-user` / `list-users`, sign-in screen in production, production-mode Playwright pass.
+- **A3 Rate limits and lockout**: per-address limits on sign-in and photo uploads (checked before the body is read), per-username lockout after repeated wrong passwords, 429 `RATE_LIMITED`.
+- **A4 Link expiry and revocation**: driver and record links expire; operators rotate or turn off driver links and turn off or reissue record links; 410 `LINK_EXPIRED`.
+- **A5 CORS and security headers**: CORS only for configured origins; CSP, no-referrer, nosniff, frame DENY, Permissions-Policy, COOP/CORP, HSTS in production, `no-store` on the API.
+- **B6 Alembic migrations**: v0.1.0 baseline plus pilot revision; start-up upgrades instead of `create_all`; legacy databases are stamped and upgraded; model-vs-migration test.
+- **B7 Photo storage**: storage interface (local disk; S3 placeholder refused); every image re-encoded with EXIF/GPS stripped; hashes are of the stored file.
+- **B8 Backup and restore**: online SQLite backup plus photos with a SHA-256 manifest; verified restore that keeps the previous data.
+- **C9 Logs and readiness**: JSON logs with request IDs and route templates, PII redaction, safe 500s, `/api/ready`.
+- **C10 Docker**: non-root image, compose with a data volume, production `.env` example, `docs/DEPLOY.md`; mock reader refuses in production.
+- **C11 CI**: ruff, pip-audit, npm audit, Playwright e2e and a Docker build-and-smoke job; fixed a scheduler NameError ruff found.
+- **R1 Reader interface**: `mock`, `gemini_demo` and a `custom` stub behind `RegisterReader`; no hard-coded model names; key in a header; Anthropic path removed.
+- **R2 Reader probe**: synthetic start-up probe of a remote reader; provider, model and latency in `/api/health`.
+- **R3 Intake banner**: always names the reader in use and says when photos go to a third party.
+- **R4 Preprocessing**: rotation (EXIF and an operator turn), resize to 1000-2000 px, greyscale contrast stretch before any reader.
+- **R5 Gurmukhi and mixed entries**: Gurmukhi digits, phone labels and prefixes, acre/killa/kanal units and fractions, mixed-script service names, Punjabi and English month names.
+
 ### Polish & Hardening Pass (29 Oct 2026)
 - **OpenAPI & Freshness Enforcement**: Regenerated `docs/openapi.json` from live application (`app.openapi()`) with LF line endings containing all 25 API paths (including `/api/intake/*` and `/api/dashboard/usage.csv`), and added an automated drift test `tests/api/test_openapi_freshness.py` that fails if committed schema is out of date.
 - **Handoff Links & Dependencies**: Updated `HANDOFF.md` to replace absolute `file:///` URLs with repo-relative paths, and documented `shapely` and `pyproj` additions for geodesic polygon and coordinate transformations.

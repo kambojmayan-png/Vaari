@@ -29,7 +29,7 @@ python tasks.py serve    # API and web app together on http://localhost:8000
 
 Open `http://localhost:8000` and enter the passcode from `.env`. After `reset` you should see **40 requests: 28 scheduled, 7 will miss, 5 need info**. The terminal also prints a driver link for each of the three machines.
 
-> The default passcode is `change-me`. Set a long random `VAARI_DEMO_PASSCODE` in `.env` before anyone else can reach the app.
+> The default passcode is `change-me`. It works in development only. For a real centre, run in production mode with staff accounts: see [docs/DEPLOY.md](docs/DEPLOY.md) (Docker, HTTPS, accounts, backups).
 
 | Command | What it does |
 | --- | --- |
@@ -42,9 +42,13 @@ Open `http://localhost:8000` and enter the passcode from `.env`. After `reset` y
 | `python tasks.py test` | Backend test suite |
 | `python tasks.py smoke` | Fast end-to-end API check |
 | `python tasks.py e2e` | Browser end-to-end tests (Playwright) on a temporary database |
-| `python tasks.py reader-eval` | Score the register reader on `examples/register_pages/` |
+| `python tasks.py reader-eval` | Score the register reader on the synthetic pages, field by field, against the pass bar in [docs/READER_EVAL.md](docs/READER_EVAL.md) |
 | `python tasks.py purge-images` | Delete register images past the retention period (`--dry-run` to preview) |
 | `python tasks.py screenshots` | Recapture the README screenshots from seeded data |
+| `python tasks.py create-user` / `disable-user` / `list-users` | Staff accounts (`--role operator` or `officer`) |
+| `python tasks.py check-config` | List unsafe settings for the current `VAARI_ENV` |
+| `python tasks.py migrate [--status]` | Upgrade the database schema (also runs at start-up) |
+| `python tasks.py backup [--keep N]` / `restore DIR [--force]` | Online backup of the database and photos, and a verified restore |
 
 **Using a phone as the driver:** browsers only share position over HTTPS, so run `python tasks.py tunnel` and open the driver link it prints. The full walkthrough, including venue-Wi-Fi fallbacks, is in [docs/DEMO_SETUP.md](docs/DEMO_SETUP.md).
 
@@ -125,14 +129,14 @@ Every component is labelled by its honest status in v0.1.
 | **Slot state machine and record hash** (`app/evidence/`) | Production-grade core | Enforced transitions (`scheduled → in_progress → done`), magic-byte photo validation, canonical JSON SHA-256 tamper check |
 | **Geodesic and position checks** (`area.py`, `position.py`) | Production-grade core | WGS84 geodesic acreage (`pyproj.Geod`); UTM Zone 43N point-to-polygon distance with a `max(30 m, accuracy)` tolerance |
 | **Evidence flags** (`rules.py`, `checks.py`) | Real, non-punitive | `too_fast`, `duplicate_photo`, position and acreage flags. A flag asks a person to look; it never blocks a job |
-| **Register reader** (`app/intake/`) | Mock by default, hosted optional | Tests and offline demos use the mock reader (badged `reader: mock`). The hosted reader (Gemini or Anthropic) is off unless `VAARI_ALLOW_HOSTED_READER=true`, and is meant for synthetic pages only |
+| **Register reader** (`app/intake/`) | Mock by default; Gemini for demonstration only; custom model later | Behind one `RegisterReader` interface. The mock (badged `reader: mock`) refuses in production. `gemini_demo` is off unless `VAARI_ALLOW_HOSTED_READER=true`, needs `VAARI_VISION_MODEL`, and is for synthetic pages only; the intake screen always says where photos go. `custom` is a stub for a future model on your own server ([docs/FUTURE_CUSTOM_READER.md](docs/FUTURE_CUSTOM_READER.md)). Every row is still confirmed by a person |
 | **Farmer consent** | Simulated | Ticked by the operator during intake. Every screen and record carries the `consent simulated` badge |
 | **Device position** | Self-reported by the phone | From the browser Geolocation API. If it is denied, the job still closes with a `position self-reported` badge |
 | **WhatsApp message** (`app/messaging/`) | Shortcut | Bilingual Punjabi/English text on screen plus a prefilled `wa.me` link. No paid messaging API |
-| **Access control** (`app/auth.py`) | Demo only | Shared passcode for operator and officer routes; unguessable 128-bit link tokens for driver and record URLs |
+| **Access control** (`app/auth.py`) | Accounts in production; passcode in development | `operator` and `officer` accounts (argon2id), signed sessions that expire, role checks, sign-in rate limits and lockout. Driver and record links are 128-bit tokens that expire and can be turned off. The shared passcode works only when `VAARI_ENV=development` |
 | **Demo data** (`app/seed/`) | Fictional | 40 requests generated relative to today's date, each badged `seeded request` |
 | **Tier 2 extras** | Built | Usage CSV export, an offline-safe map panel, and rescue options (nearest compatible centres) on will-miss requests |
-| **Satellite sensing, GPX coverage trace** | Not built | Cut to keep the demo fully deterministic. `/api/health` reports `satellite: "disabled"` |
+| **Satellite sensing, GPX coverage trace** | Satellite: future (v0.7), not built | No satellite code exists. `/api/health` reports `satellite: "disabled"`. Design: [docs/FUTURE_SATELLITE.md](docs/FUTURE_SATELLITE.md) |
 
 ### What the demo proves, and what it does not
 
@@ -169,7 +173,7 @@ Every unreliable dependency sits behind an interface with a mock, so each part c
 | Scheduler | Greedy deadline-first | Routing solver | The greedy scheduler is the default |
 | Notifier | On-screen panel, `wa.me` link | WhatsApp Business | The on-screen panel always renders |
 | Position check | shapely + pyproj geometry | | The job closes, badged "position self-reported" |
-| Harvest sensor | Disabled | Sentinel-2 reader | Not needed by the core loop |
+| Harvest sensor | Satellite: future (v0.7), not built | `HarvestSensor` (Sentinel-2 / Sentinel-1), see [docs/FUTURE_SATELLITE.md](docs/FUTURE_SATELLITE.md) | Not needed by the core loop |
 
 ### Fallback behaviour
 
@@ -230,11 +234,13 @@ Copy `.env.example` to `.env`. The settings you are most likely to change:
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `VAARI_DEMO_PASSCODE` | `change-me` | Shared passcode for operator and officer screens. **Change it** |
-| `VAARI_READER` | `mock` | `mock` or `hosted` |
-| `VAARI_ALLOW_HOSTED_READER` | `false` | Must be `true` before any image is sent to a hosted model |
-| `VAARI_VISION_PROVIDER` | `gemini` | `gemini` or `anthropic` |
-| `GEMINI_API_KEY` / `ANTHROPIC_API_KEY` | empty | Only needed for the hosted reader. Never commit them |
+| `VAARI_ENV` | `development` | `production` refuses to start with unsafe settings and switches the passcode off |
+| `VAARI_SECRET_KEY` | empty | Signs sign-in sessions. Required in production (32+ characters) |
+| `VAARI_DEMO_PASSCODE` | `change-me` | Shared passcode, **development only** |
+| `VAARI_READER` | `mock` | `mock`, `gemini_demo` (demo only) or `custom` |
+| `VAARI_ALLOW_HOSTED_READER` | `false` | Must be `true` before any image is sent to Gemini |
+| `VAARI_VISION_MODEL` | empty | Required when the Gemini reader is on. No built-in default |
+| `GEMINI_API_KEY` | empty | Only for the Gemini demo reader. Keep it in `.env`; never commit it |
 | `VAARI_TODAY` | empty | Pin the demo date, for repeatable rehearsals |
 | `VAARI_PUBLIC_BASE_URL` | empty | Base URL used in driver and record links |
 | `VAARI_DB_PATH` / `VAARI_DATA_DIR` | `data/...` | Where the SQLite file and photos live |
@@ -248,12 +254,12 @@ python tasks.py smoke    # one fast end-to-end API pass
 python tasks.py e2e      # browser: Desk, Driver, Record, Officer, Intake and fallbacks, offline
 ```
 
-CI runs the backend tests and the web build on every push. Small samples are reported as counts, never percentages.
+CI runs ruff, the backend tests, pip-audit and npm audit, the web build, the Playwright suite (a development pass and a production sign-in pass) and a Docker build with a smoke test on every push. Small samples are reported as counts, never percentages.
 
 | What | Measure |
 | --- | --- |
 | Scheduler | Boundary tests on deadlines and capacity; determinism; a reason code for every unserved request |
-| Register reader | Rows usable without edits; wrong fields by type; seconds per page. Test pages carry no real personal data. See [examples/register_pages/](examples/register_pages/) |
+| Register reader | Each field per page as *k of N*, silent errors (wrong but confident phone or acres), common errors, against a pass bar fixed before any run. Synthetic pages only. See [docs/READER_EVAL.md](docs/READER_EVAL.md) |
 | Evidence | Jobs closed with both photos and a plausible position; invalid transitions rejected |
 | Fallbacks | Each dependency killed in turn; the loop still closes and the screen says what happened |
 
@@ -263,7 +269,7 @@ The readiness checklist and its results are in [docs/READINESS.md](docs/READINES
 
 Vaari writes a SQLite database and evidence photos to disk, so it needs a host with a **persistent disk or volume**. Serverless platforms such as Vercel give functions only temporary, per-instance storage, so run the backend on a host with a disk (Render, Railway or Fly.io, for example) and, if you like, put only the static frontend on Vercel with a rewrite that forwards `/api/*` to the backend.
 
-The simplest option is one service: build with `pip install -r requirements.txt && cd web && npm ci && npm run build`, start with `uvicorn app.main:app --host 0.0.0.0 --port $PORT`, and mount a disk for `VAARI_DB_PATH` and `VAARI_DATA_DIR`. Use a strong passcode, keep the hosted reader off for real data, and run `python tasks.py reset` once to seed.
+For a hiring-centre pilot, use Docker: `docs/DEPLOY.md` goes from a fresh clone to a running, non-root container with a data volume, staff accounts, HTTPS in front, backups and restore. Do not run `reset` or `seed` on a real deployment: they are for the demo, and refuse in production.
 
 ---
 
@@ -271,10 +277,10 @@ The simplest option is one service: build with `pip install -r requirements.txt 
 
 - Position is reported by the phone, including its accuracy. It can be spoofed. It is supporting evidence, not proof of presence.
 - SHA-256 gives **exact duplicate detection** only. A resized, cropped or re-encoded photo passes. Perceptual hashing is on the roadmap.
-- The demo passcode is not security. Authentication, roles, rate limits and upload scanning must arrive before any pilot.
+- The demo passcode is not security, so production switches it off in favour of staff accounts. Rate-limit and lockout counts live in memory in one server process. Uploads are checked by magic bytes and fully re-encoded, but not virus-scanned.
 - Handwritten Gurmukhi is hard for vision models. The name field is optional because the phone number is the key.
-- The register reader was evaluated against the mock reader in the repository. Run `python tasks.py reader-eval` with your own synthetic pages to measure the hosted reader.
-- Harvest sensing from satellite imagery is not built and not validated on Punjab paddy.
+- The Gemini reader has **not** yet been run on the synthetic set (it was built where the API could not be reached). Its section of [docs/READER_EVAL.md](docs/READER_EVAL.md) says "not run" until someone runs `python tasks.py reader-eval` with a key. The synthetic pages are printed, not handwritten.
+- Satellite harvest sensing is future (v0.7), not built, and not validated on Punjab paddy. It may only ever suggest a window; a person's date always wins.
 - Vaari does not change the economics: not burning costs a farmer roughly Rs. 2,000 an acre.
 
 ## Responsible use
@@ -286,7 +292,7 @@ The simplest option is one service: build with `pip install -r requirements.txt 
 
 ## Roadmap
 
-`v0.1` MVP (this release) → `v0.2` pilot hardening → `v0.3` offline and mobile → `v0.4` scheduling optimisation → `v0.5` messaging → `v0.6` security and privacy → `v0.7` satellite intelligence → `v1.0` pilot production. Details: [docs/ROADMAP.md](docs/ROADMAP.md).
+`v0.1` MVP (this release) → `v0.2` pilot hardening → `v0.3` offline and mobile → `v0.4` scheduling optimisation → `v0.5` messaging → `v0.6` security and privacy → `v0.7` satellite intelligence (future, not built) → `v1.0` pilot production. Details: [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Engineering highlights
 
@@ -299,7 +305,7 @@ The simplest option is one service: build with `pip install -r requirements.txt 
 
 ## Documentation
 
-[Build contract](docs/CONTRACT.md) · [Phases](docs/PHASES.md) · [Architecture](docs/ARCHITECTURE.md) · [API](docs/API.md) · [Build plan](docs/BUILD_PLAN.md) · [Testing](docs/TESTING.md) · [Demo setup](docs/DEMO_SETUP.md) · [Readiness](docs/READINESS.md) · [Fallback results](docs/FALLBACK_RESULTS.md) · [Privacy](docs/PRIVACY.md) · [Prior art](docs/PRIOR_ART.md) · [Roadmap](docs/ROADMAP.md) · [Decisions](docs/DECISIONS.md) · [Handoff notes](HANDOFF.md) · [Changelog](CHANGELOG.md)
+[Build contract](docs/CONTRACT.md) · [Phases](docs/PHASES.md) · [Architecture](docs/ARCHITECTURE.md) · [API](docs/API.md) · [Build plan](docs/BUILD_PLAN.md) · [Testing](docs/TESTING.md) · [Demo setup](docs/DEMO_SETUP.md) · [Readiness](docs/READINESS.md) · [Fallback results](docs/FALLBACK_RESULTS.md) · [Privacy](docs/PRIVACY.md) · [Prior art](docs/PRIOR_ART.md) · [Roadmap](docs/ROADMAP.md) · [Decisions](docs/DECISIONS.md) · [Handoff notes](HANDOFF.md) · [Changelog](CHANGELOG.md) · [Deploy](docs/DEPLOY.md) · [Reader evaluation](docs/READER_EVAL.md) · [Future custom reader](docs/FUTURE_CUSTOM_READER.md) · [Future satellite](docs/FUTURE_SATELLITE.md)
 
 ## Contributing and licence
 

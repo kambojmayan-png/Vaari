@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { getSlotMessage, markMessageOpened, patchRequest, deleteRequest, ApiError } from '../api';
+import { getSlotMessage, markMessageOpened, patchRequest, deleteRequest, revokeRecordLink, reissueRecordLink, ApiError } from '../api';
 import { friendlyError } from '../errors';
 import Badge from './Badge';
 import type { RequestOut, SlotMessage } from '../types';
@@ -31,6 +31,24 @@ export default function RequestDetailPanel({ request, onClose, onUpdate }: Props
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [cancelError, setCancelError] = useState<string | null>(null);
+
+  // Record link (pilot v0.2): turn off or reissue the farmer's record link
+  const [recordLinkNote, setRecordLinkNote] = useState<string | null>(null);
+  const handleRecordLink = async (action: 'revoke' | 'reissue') => {
+    const slotId = request?.slot?.id;
+    if (!slotId) return;
+    setRecordLinkNote(null);
+    try {
+      const res = action === 'revoke' ? await revokeRecordLink(slotId) : await reissueRecordLink(slotId);
+      setRecordLinkNote(
+        action === 'revoke'
+          ? 'Record link turned off. The record and its hash are unchanged.'
+          : `New record link: ${res.record_url}`,
+      );
+    } catch (err) {
+      setRecordLinkNote(err instanceof ApiError ? friendlyError(err.error_code) || err.message : 'Failed to change the record link.');
+    }
+  };
 
   useEffect(() => {
     if (request) {
@@ -236,6 +254,17 @@ export default function RequestDetailPanel({ request, onClose, onUpdate }: Props
                   <span className={`status-pill pill-${request.slot.status}`}>{request.slot.status}</span>
                 </div>
               </div>
+              {request.slot.status === 'done' && (
+                <div className="driver-link-row" id="record-link-actions">
+                  <button id="btn-record-link-reissue" type="button" className="btn btn-secondary btn-sm" onClick={() => handleRecordLink('reissue')}>
+                    New record link
+                  </button>
+                  <button id="btn-record-link-revoke" type="button" className="btn btn-secondary btn-sm" onClick={() => handleRecordLink('revoke')}>
+                    Turn off record link
+                  </button>
+                </div>
+              )}
+              {recordLinkNote && <p className="attr-label" id="record-link-note">{recordLinkNote}</p>}
             </div>
           )}
 

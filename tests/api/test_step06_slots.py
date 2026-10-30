@@ -1,10 +1,10 @@
 """Tests for Step 06: slot state machine, evidence capture and photos (S1-S10)."""
 
 import hashlib
-import io
 from pathlib import Path
+
 from app import clock
-from app.models import Evidence, ServiceRecord, Slot
+from app.models import Evidence, ServiceRecord
 from tests.fixtures.synthetic_photos import TINY_JPEG
 
 

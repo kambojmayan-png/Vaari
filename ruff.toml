@@ -1,0 +1,15 @@
+# Lint rules checked in CI (pilot item C11). Kept to real-bug classes so the check stays meaningful.
+line-length = 120
+target-version = "py311"
+extend-exclude = ["web", ".venv", "data", "backups"]
+
+[lint]
+# pycodestyle errors and warnings, pyflakes, bugbear (likely bugs), and an import-order check.
+select = ["E", "W", "F", "B", "I"]
+ignore = [
+    "E501",  # long lines: the formatter is not enforced in this codebase yet
+    "B008",  # FastAPI's Depends()/File() in argument defaults is the framework's idiom
+]
+
+[lint.per-file-ignores]
+"migrations/versions/*.py" = ["W291", "W293", "I001"]  # generated files

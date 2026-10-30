@@ -3,11 +3,12 @@
 import hashlib
 import json
 from typing import Any
+
 from sqlalchemy.orm import Session
+
 from app import clock
-from app.config import settings
 from app.models import Evidence, Request, ServiceRecord, Slot
-from app.tokens import new_token
+from app.tokens import new_token, record_link_expiry
 
 
 def canonical_json(payload: dict[str, Any]) -> str:
@@ -78,6 +79,8 @@ def create_record(session: Session, slot: Slot) -> ServiceRecord:
         record_hash=record_hash,
         hash_version="v1",
         generated_at=clock.now_utc(),
+        token_expires_at=record_link_expiry(),
+        token_revoked_at=None,
     )
     session.add(record)
     session.flush()

@@ -1,5 +1,7 @@
 # Register Reader Evaluation Guide
 
+> **Pilot v0.2:** the main evaluation set is now `synth_01` … `synth_06`, drawn by `scripts/make_synthetic_register_pages.py` (fixed seed, invented data). Only their `.expected.json` files are committed. The pass bar and the results are in [`docs/READER_EVAL.md`](../../docs/READER_EVAL.md).
+
 This directory contains evaluation fixtures and benchmark results for the Vaari register intake OCR/vision reader (`python tasks.py reader-eval`).
 
 ---
@@ -72,7 +74,7 @@ To add a new synthetic benchmark evaluation case:
 
 ## Running Reader Evaluations
 
-Evaluation runs compare the output of the active reader against the corresponding `*.expected.json` files and generate a count-based report in `examples/register_pages/EVAL.md`.
+Evaluation runs compare the output of the active reader against the corresponding `*.expected.json` files and write a count-based report into `docs/READER_EVAL.md`.
 
 ### 1. Running with the Mock Reader (Offline Default)
 By default, Vaari uses the offline deterministic mock reader. To run evaluation:
@@ -80,7 +82,7 @@ By default, Vaari uses the offline deterministic mock reader. To run evaluation:
 python tasks.py reader-eval
 ```
 - If an image file is absent locally, a tiny synthetic test JPEG is generated automatically so evaluation can run in CI and headless environments.
-- Results are printed to the console and written to `examples/register_pages/EVAL.md`.
+- Results are printed to the console and written into `docs/READER_EVAL.md` (the section for that reader).
 
 ### 2. Running with the Hosted Vision Reader
 To evaluate a real hosted Multimodal LLM (Gemini or Anthropic Claude) on local synthetic images:
@@ -96,7 +98,7 @@ To evaluate a real hosted Multimodal LLM (Gemini or Anthropic Claude) on local s
    ```bash
    python tasks.py reader-eval
    ```
-3. Inspect `examples/register_pages/EVAL.md` to review the error counts and execution time.
+3. Inspect `docs/READER_EVAL.md` to review the error counts and execution time.
 
 ---
 

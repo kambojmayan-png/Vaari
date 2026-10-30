@@ -2,15 +2,15 @@
 
 from datetime import date, datetime, timezone
 from urllib.parse import unquote
-import pytest
+
 from app import clock
-from app.models import Request, ServiceRecord, Slot
+from app.models import Request, Slot
 from tests.fixtures.synthetic_photos import TINY_JPEG
 
 
 def setup_running_slot(client, auth_headers):
     today = clock.today()
-    m_res = client.post(
+    client.post(
         "/api/machines",
         json={
             "name": f"SS-{clock.now_utc().timestamp()}",

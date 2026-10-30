@@ -17,6 +17,38 @@ export interface Health {
   today: string;
   demo_clock: boolean;
   version: string;
+  env?: 'development' | 'production';
+  auth?: 'passcode' | 'accounts';
+  reader_detail?: ReaderDetail;
+}
+
+export interface ReaderDetail {
+  name: 'mock' | 'gemini_demo' | 'custom' | string;
+  kind: string;
+  provider: string | null;
+  model: string | null;
+  third_party: boolean;
+  demo_only: boolean;
+  probe: {
+    status: 'not_run' | 'pending' | 'ok' | 'failed';
+    latency_ms?: number;
+    checked_at?: string;
+    error?: string;
+  };
+}
+
+// ── Auth (pilot v0.2) ────────────────────────────────────────
+export interface LoginResult {
+  token: string;
+  token_type: 'bearer';
+  expires_at: string;
+  user: { username: string; role: 'operator' | 'officer' };
+}
+
+export interface MeResult {
+  username: string | null;
+  roles: string[];
+  via: 'passcode' | 'session';
 }
 
 // ── RequestOut ───────────────────────────────────────────────
@@ -71,6 +103,16 @@ export interface MachineOut {
   active_from: string | null;
   active_to: string | null;
   driver_path: string;
+  driver_link_status?: 'active' | 'expired' | 'revoked';
+  driver_link_expires_at?: string | null;
+}
+
+export interface RecordLinkOut {
+  slot_id: number;
+  record_token: string;
+  record_url: string;
+  status: 'active' | 'expired' | 'revoked';
+  expires_at: string | null;
 }
 
 // ── SlotOut ──────────────────────────────────────────────────
@@ -271,6 +313,8 @@ export interface IntakeRow {
 export interface IntakeOut {
   intake_id: number;
   reader: string;
+  reader_name?: string;
+  third_party?: boolean;
   latency_ms: number | null;
   status: string;
   rows: IntakeRow[];

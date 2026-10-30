@@ -1,14 +1,16 @@
 """Dashboard summary and usage CSV API routes (Contract Section 11 & Step 07 / Step 10)."""
 
 import csv
-from datetime import date, timedelta
 import io
+from datetime import date, timedelta
 from typing import Any
+
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
+
 from app import clock
-from app.auth import require_passcode
+from app.auth import Principal, require_staff
 from app.db import get_db
 from app.enums import from_x100
 from app.models import Machine, Plot, Request, ServiceRecord, Slot
@@ -23,7 +25,7 @@ def get_dashboard_summary(
     machine_id: int | None = Query(None),
     status: str | None = Query(None),
     session: Session = Depends(get_db),
-    _passcode: str = Depends(require_passcode),
+    _principal: Principal = Depends(require_staff),
 ) -> dict[str, Any]:
     today = clock.today()
 
@@ -142,7 +144,7 @@ def get_dashboard_summary(
 @router.get("/usage.csv")
 def get_usage_csv(
     session: Session = Depends(get_db),
-    _passcode: str = Depends(require_passcode),
+    _principal: Principal = Depends(require_staff),
 ):
     """Export acres per machine per day as CSV: date,machine,jobs,acres (Contract Section 11)."""
     slots = (

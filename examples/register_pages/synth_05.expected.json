@@ -1,0 +1,159 @@
+{
+  "synthetic": true,
+  "anchor_today": "2026-10-25",
+  "gurmukhi_font": true,
+  "rows": [
+    {
+      "row": 1,
+      "written": {
+        "phone": "9000005001",
+        "name": "Amarjit Sandhu",
+        "village": "Sangat Kalan",
+        "acres": "2",
+        "service_type": "ਬੇਲਰ",
+        "harvest_date": "19 ਅਕਤੂਬਰ"
+      },
+      "fields": {
+        "phone": "9000005001",
+        "name": "Amarjit Sandhu",
+        "village": "Sangat Kalan",
+        "acres": 2.0,
+        "service_type": "baler",
+        "harvest_date": "2026-10-19"
+      }
+    },
+    {
+      "row": 2,
+      "written": {
+        "phone": "90000 05002",
+        "name": "Paramjit Kaur",
+        "village": "Sangat Kalan",
+        "acres": "੨",
+        "service_type": "Baler",
+        "harvest_date": "16 ਨਵੰਬਰ"
+      },
+      "fields": {
+        "phone": "9000005002",
+        "name": "Paramjit Kaur",
+        "village": "Sangat Kalan",
+        "acres": 2.0,
+        "service_type": "baler",
+        "harvest_date": "2026-11-16"
+      }
+    },
+    {
+      "row": 3,
+      "written": {
+        "phone": "90000 05003",
+        "name": "Kuldeep Brar",
+        "village": "Goniana Mandi",
+        "acres": "2",
+        "service_type": "ਮਲਚਰ",
+        "harvest_date": "27 ਨਵੰਬਰ"
+      },
+      "fields": {
+        "phone": "9000005003",
+        "name": "Kuldeep Brar",
+        "village": "Goniana Mandi",
+        "acres": 2.0,
+        "service_type": "mulcher",
+        "harvest_date": "2026-11-27"
+      }
+    },
+    {
+      "row": 4,
+      "written": {
+        "phone": "9000005004",
+        "name": "Inderjit Dhillon",
+        "village": "Goniana Mandi",
+        "acres": "੭.੫",
+        "service_type": "Baler",
+        "harvest_date": "7 ਨਵੰਬਰ"
+      },
+      "fields": {
+        "phone": "9000005004",
+        "name": "Inderjit Dhillon",
+        "village": "Goniana Mandi",
+        "acres": 7.5,
+        "service_type": "baler",
+        "harvest_date": "2026-11-07"
+      }
+    },
+    {
+      "row": 5,
+      "written": {
+        "phone": "90000 05005",
+        "name": "Amarjit Sidhu",
+        "village": "Pind Kalan",
+        "acres": "7.5 ਕਿੱਲੇ",
+        "service_type": "Mulcher",
+        "harvest_date": "੨੨/੧੦"
+      },
+      "fields": {
+        "phone": "9000005005",
+        "name": "Amarjit Sidhu",
+        "village": "Pind Kalan",
+        "acres": 7.5,
+        "service_type": "mulcher",
+        "harvest_date": "2026-10-22"
+      }
+    },
+    {
+      "row": 6,
+      "written": {
+        "phone": "੯੦੦੦੦੦੫੦੦੬",
+        "name": "Navdeep Dhillon",
+        "village": "Bhucho Khurd",
+        "acres": "੧.੫",
+        "service_type": "Baler",
+        "harvest_date": "31/10"
+      },
+      "fields": {
+        "phone": "9000005006",
+        "name": "Navdeep Dhillon",
+        "village": "Bhucho Khurd",
+        "acres": 1.5,
+        "service_type": "baler",
+        "harvest_date": "2026-10-31"
+      }
+    },
+    {
+      "row": 7,
+      "written": {
+        "phone": "੯੦੦੦੦੦੫੦੦੭",
+        "name": "Harjinder Singh",
+        "village": "Kot Shamir",
+        "acres": "੭.੫",
+        "service_type": "ਮਲਚਰ",
+        "harvest_date": "20/10"
+      },
+      "fields": {
+        "phone": "9000005007",
+        "name": "Harjinder Singh",
+        "village": "Kot Shamir",
+        "acres": 7.5,
+        "service_type": "mulcher",
+        "harvest_date": "2026-10-20"
+      }
+    },
+    {
+      "row": 8,
+      "written": {
+        "phone": "੯੦੦੦੦੦੫੦੦੮",
+        "name": "Kuldeep Sandhu",
+        "village": "Bhucho Khurd",
+        "acres": "੨",
+        "service_type": "Mulcher",
+        "harvest_date": ""
+      },
+      "fields": {
+        "phone": "9000005008",
+        "name": "Kuldeep Sandhu",
+        "village": "Bhucho Khurd",
+        "acres": 2.0,
+        "service_type": "mulcher",
+        "harvest_date": null
+      }
+    }
+  ]
+}

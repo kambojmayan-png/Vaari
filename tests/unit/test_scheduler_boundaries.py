@@ -1,12 +1,11 @@
 """Boundary tests B1 to B6 for pure scheduler plan()."""
 
 from datetime import date, datetime, timezone
-import pytest
+
 from app.scheduler.plan import (
     CentreIn,
     ExistingSlot,
     MachineIn,
-    Plan,
     RequestIn,
     Settings,
     days_inclusive,

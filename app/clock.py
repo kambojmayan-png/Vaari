@@ -3,8 +3,10 @@
 The ONLY place in app/ that reads the system clock or date.
 """
 
-from datetime import date, datetime, timezone
+import time
 import zoneinfo
+from datetime import date, datetime, timezone
+
 from app.config import settings
 
 _PUNJABI_MONTHS = {
@@ -41,6 +43,11 @@ _ENGLISH_MONTHS = {
 def now_utc() -> datetime:
     """Return timezone-aware current UTC datetime."""
     return datetime.now(timezone.utc)
+
+
+def monotonic() -> float:
+    """Seconds from a monotonic clock, for rate limits and timers (never for dates)."""
+    return time.monotonic()
 
 
 def today() -> date:

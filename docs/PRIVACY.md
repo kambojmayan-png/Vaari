@@ -84,3 +84,15 @@ v0.1 is a demo on one laptop: secrets in `.env`, data folders in `.gitignore`, n
 ## 8. What Vaari never collects
 
 Aadhaar numbers, land records, bank details, caste or income, photos of people, continuous location of a farmer, or any data about fields that were not part of a request.
+
+## 9. Pilot v0.2 changes
+
+What the pilot build adds, and what it still does not do:
+
+- **Photo metadata is removed.** Every uploaded photo (start, done and register pages) is decoded, turned upright and saved again as a plain JPEG with no EXIF, GPS, camera model, time or comments (`app/storage/sanitize.py`). The position Vaari keeps is the one the phone reports to the API, with its accuracy.
+- **Logs carry no personal data.** Logs are JSON lines with a request ID and the route *template* (never a real path, query string, body, name, phone, token or image). A filter also masks anything shaped like a mobile number or a link token (`app/logging_setup.py`).
+- **Role-based access.** Operators see what they need to run the centre, including phone numbers. Officers see oversight views with no phone numbers and no driver links. Every sign-in is per person, and actions are logged against the account (`event_log.actor`, for example `operator:asha`).
+- **Links expire and can be turned off.** Driver links last 30 days, record links 365, and an operator can cut either off at once.
+- **Backups hold personal data.** A backup is a full copy of the database and photos. Keep backups encrypted or on media only the centre can reach, and delete old ones (`backup --keep N`).
+- **Third parties.** The Gemini reader sends register photos to Google. It is for demonstration on synthetic pages only, is off by default, and production refuses to start with it unless overridden on purpose. The intake screen always says where photos go. The optional Desk map loads tiles from OpenStreetMap, which reveals the approximate area being viewed to that service.
+- **Not done yet:** encryption at rest (use an encrypted disk), a documented breach procedure, consent captured from the farmer's own phone (consent is still recorded by the operator), and any collection of training data, which is deliberately not built (`docs/FUTURE_CUSTOM_READER.md`).

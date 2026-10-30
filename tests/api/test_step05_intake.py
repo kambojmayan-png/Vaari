@@ -2,7 +2,7 @@
 
 from datetime import timedelta
 from pathlib import Path
-import pytest
+
 from app import clock
 from app.intake.reader import ReaderUnavailable
 from app.models import IntakePage, RegisterDraft, Request
@@ -193,3 +193,15 @@ def test_purge_expired_register_images(client, auth_headers, temp_db):
     assert len(real_deleted) == 1
     assert not Path(real_deleted[0]).exists()
     session.close()
+
+
+def test_intake_out_names_the_reader_and_third_party(client, auth_headers):
+    """Part 5: IntakeOut says which reader made the draft and whether it is a third party."""
+    res = client.post(
+        "/api/intake/register-photo",
+        headers=auth_headers,
+        files={"photo": ("page.jpg", TINY_JPEG, "image/jpeg")},
+    )
+    body = res.json()
+    assert body["reader"] == "mock"
+    assert body["reader_name"] == "mock" and body["third_party"] is False

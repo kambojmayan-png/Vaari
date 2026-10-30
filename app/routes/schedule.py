@@ -2,9 +2,11 @@
 
 from datetime import date
 from typing import Any
+
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
-from app.auth import require_passcode
+
+from app.auth import Principal, require_operator, require_staff
 from app.config import settings
 from app.db import get_db
 from app.enums import from_x100
@@ -19,7 +21,7 @@ router = APIRouter(prefix="/schedule", tags=["schedule"])
 @router.post("/run")
 def trigger_schedule_run(
     session: Session = Depends(get_db),
-    _passcode: str = Depends(require_passcode),
+    _principal: Principal = Depends(require_operator),
 ) -> dict[str, Any]:
     home_centre = get_or_create_home_centre(session)
     counts = run_for_centre(session, home_centre.id)
@@ -32,7 +34,7 @@ def get_schedule(
     date: date | None = Query(None),
     machine_id: int | None = Query(None),
     session: Session = Depends(get_db),
-    _passcode: str = Depends(require_passcode),
+    _principal: Principal = Depends(require_operator),
 ) -> list[dict[str, Any]]:
     query = session.query(Slot).filter(Slot.status.in_(["scheduled", "in_progress", "done"]))
     if date:
@@ -75,7 +77,7 @@ def get_schedule(
 @router.get("/will-miss")
 def get_will_miss_requests(
     session: Session = Depends(get_db),
-    _passcode: str = Depends(require_passcode),
+    _principal: Principal = Depends(require_staff),
 ) -> list[dict[str, Any]]:
     misses = (
         session.query(Request)

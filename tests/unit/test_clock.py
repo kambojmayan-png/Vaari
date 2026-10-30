@@ -1,9 +1,9 @@
 """Unit tests for app/clock.py and adherence to time rules (T1, T3)."""
 
+import re
 from datetime import date, datetime, timezone
 from pathlib import Path
-import re
-import pytest
+
 from app import clock
 
 
@@ -35,7 +35,7 @@ def test_T3_clock_usage_ban_in_app():
                 if pattern.search(line):
                     violations.append(f"{py_file.name}:{line_no}: {line.strip()}")
 
-    assert not violations, f"Forbidden clock calls found outside app/clock.py:\n" + "\n".join(violations)
+    assert not violations, "Forbidden clock calls found outside app/clock.py:\n" + "\n".join(violations)
 
 
 def test_vaari_today_override(monkeypatch):

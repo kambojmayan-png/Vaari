@@ -1,8 +1,8 @@
 """Deterministic validation and normalization of register draft rows (Step 02)."""
 
+import re
 from datetime import date, timedelta
 from decimal import Decimal
-import re
 from typing import Any
 
 LOW_CONFIDENCE_THRESHOLD: float = 0.8
@@ -37,12 +37,23 @@ SERVICE_TYPE_MAP: dict[str, str] = {
     "ਮਲਚਰ": "mulcher",
 }
 
-_GURMUKHI_DIGITS = str.maketrans("੦੧੨੩੪੫੬੭੮੯", "0123456789")
-_DEVANAGARI_DIGITS = str.maketrans("०१२३४५६७८९", "0123456789")
+from app.intake.normalize import (  # noqa: E402  (kept beside the old helpers it replaces)
+    month_name_date,
+    normalize_phone,
+    normalize_service,
+    parse_acres,
+    to_ascii_digits,
+)
+
+# Issues that ask a person to look but do not stop the row being confirmed.
+WARNING_PREFIXES = (
+    "acres: unusually large, check the register",
+    "acres: converted from",
+)
 
 
 def _normalize_digits(text: str) -> str:
-    return text.translate(_GURMUKHI_DIGITS).translate(_DEVANAGARI_DIGITS)
+    return to_ascii_digits(text)
 
 
 def _parse_harvest_date(raw_val: Any, today: date) -> tuple[str | None, str | None]:
@@ -95,7 +106,14 @@ def _parse_harvest_date(raw_val: Any, today: date) -> tuple[str | None, str | No
         except ValueError:
             return s, "harvest_date: invalid calendar date"
     else:
-        return s, "harvest_date: invalid date format"
+        named = month_name_date(s)
+        if named is None:
+            return s, "harvest_date: invalid date format"
+        d_part, m_part, y_part = named
+        try:
+            parsed = date(y_part or today.year, m_part, d_part)
+        except ValueError:
+            return s, "harvest_date: invalid calendar date"
 
     min_date = today - timedelta(days=30)
     max_date = today + timedelta(days=60)
@@ -141,10 +159,7 @@ def validate_row(
         clean["phone"] = raw_phone
         record_issue("phone", "phone: missing")
     else:
-        norm_phone = _normalize_digits(str(raw_phone).strip())
-        norm_phone = re.sub(r"[\s\-]", "", norm_phone)
-        if norm_phone.startswith("+91") and len(norm_phone) > 3:
-            norm_phone = norm_phone[3:]
+        norm_phone = normalize_phone(str(raw_phone).strip())
         clean["phone"] = norm_phone
         if not PHONE_RE.match(norm_phone):
             record_issue("phone", "phone: must be 10 digits starting with 6-9")
@@ -170,7 +185,10 @@ def validate_row(
         record_issue("acres", "acres: missing")
     else:
         try:
-            s_acres = _normalize_digits(str(raw_acres).strip())
+            parsed_acres, acres_warning = parse_acres(raw_acres)
+            s_acres = parsed_acres if parsed_acres is not None else _normalize_digits(str(raw_acres).strip())
+            if acres_warning:
+                record_issue("acres", acres_warning)
             d_acres = Decimal(s_acres)
             f_acres = float(d_acres)
             clean["acres"] = f_acres
@@ -191,7 +209,11 @@ def validate_row(
         record_issue("service_type", "service_type: missing")
     else:
         key = str(raw_st).strip().lower()
-        mapped = SERVICE_TYPE_MAP.get(key) or SERVICE_TYPE_MAP.get(str(raw_st).strip())
+        mapped = (
+            SERVICE_TYPE_MAP.get(key)
+            or SERVICE_TYPE_MAP.get(str(raw_st).strip())
+            or normalize_service(raw_st)
+        )
         if mapped in VALID_SERVICE_TYPES:
             clean["service_type"] = mapped
         else:
@@ -214,10 +236,10 @@ def validate_row(
     return clean, issues
 
 
+def is_warning(issue: str) -> bool:
+    return issue.startswith(WARNING_PREFIXES)
+
+
 def has_blocking_issues(issues: list[str]) -> bool:
-    """Return True if any issue is a blocking validation error (excludes the >25 acres warning)."""
-    for iss in issues:
-        if iss == "acres: unusually large, check the register":
-            continue
-        return True
-    return False
+    """Return True if any issue is a blocking validation error (warnings such as >25 acres are not)."""
+    return any(not is_warning(iss) for iss in issues)

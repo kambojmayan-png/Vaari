@@ -2,7 +2,7 @@
 
 > Exact field lists, enums, routes and rules for the build are in [CONTRACT.md](CONTRACT.md). This page explains the design. Where they differ, the contract wins.
 
-One Python process does everything: API, scheduler, intake, evidence and the static frontend, over a SQLite file. Satellite sensing and the coverage trace live in an optional layer that the core never imports.
+One Python process does everything: API, scheduler, intake, evidence and the static frontend, over a SQLite file. Satellite sensing is future (v0.7), not built ([design](FUTURE_SATELLITE.md)); when it is built, it and the coverage trace will live in an optional layer that the core never imports.
 
 Build order follows one rule: **workflow first, intelligence second, optimisation third, production hardening last.** Tiers are defined in [BUILD_PLAN.md](BUILD_PLAN.md).
 
@@ -25,7 +25,7 @@ flowchart TD
     E[EVIDENCE<br/>slot lifecycle, photo, position, service code]
   end
   I --> S --> E --> R[Service record] --> O[Officer dashboard]
-  X[Optional intelligence layer<br/>harvest sensing, scar panel, coverage trace] -.-> S
+  X[Optional intelligence layer, future v0.7, not built<br/>harvest sensing, scar panel, coverage trace] -.-> S
   X -.-> R
 ```
 
@@ -38,7 +38,7 @@ flowchart LR
   V -- will-miss list, usage report --> OF[Village officer]
   V -- shareable record and receipt --> F
   V -. one call per page .-> VLM[Hosted vision model]
-  V -. optional .-> S2[Sentinel-2 on Earth Search]
+  V -. future v0.7, not built .-> S2[Sentinel-2 and Sentinel-1]
 ```
 
 ## 3. Interfaces
@@ -48,7 +48,7 @@ Every unreliable dependency sits behind an interface with a mock. Routes depend 
 ```python
 class RegisterReader(Protocol):
     def read(self, image: bytes) -> RegisterDraft: ...
-# MockRegisterReader · HostedVisionReader (provider chosen in .env) · LocalOCRReader · OllamaReader
+# MockRegisterReader · GeminiDemoReader (demo only, images go to Google) · CustomModelReader (stub, see FUTURE_CUSTOM_READER.md)
 
 class Scheduler(Protocol):
     def plan(self, requests, machines, today) -> Plan: ...
@@ -61,7 +61,7 @@ class Notifier(Protocol):
 class PositionChecker(Protocol):
     def check(self, fix, plot) -> Plausibility: ...
 
-class HarvestSensor(Protocol):            # optional layer
+class HarvestSensor(Protocol):            # future (v0.7), not built: docs/FUTURE_SATELLITE.md
     def sense(self, plot) -> HarvestInterval: ...
 # MockHarvestSensor · Sentinel2HarvestSensor
 ```
@@ -239,9 +239,9 @@ erDiagram
 | `event_log` | id, actor, entity, entity_id, event, payload_json, at. Append-only |
 | Optional layer | `trace`, `orbit_check`, `review` |
 
-## 10. Optional intelligence layer
+## 10. Optional intelligence layer (future (v0.7), not built)
 
-Nothing in the core imports it. It reads plots and writes its own tables.
+Nothing in this section exists in code. When built, nothing in the core will import it; it will read plots and write its own tables, and it may only suggest. See [FUTURE_SATELLITE.md](FUTURE_SATELLITE.md).
 
 - **Harvest sensing.** Mean NDVI per clear Sentinel-2 scene on 10 m bands; "harvested between A and B", never a single day; the stated date wins. Not validated on Punjab paddy, so it reports "k of N intervals held".
 - **Scar panel.** Baseline after harvest and before Start, never pre-harvest. Three soft outputs, no decision.
@@ -259,7 +259,7 @@ $$
 | Vision model | The form opens with the photo beside it | "Reader unavailable: type the rows" |
 | WhatsApp | `wa.me` link, then the on-screen message | "Not sent: copy or call" |
 | Phone cannot reach the server over HTTPS | Start and Done in the laptop's browser | Badge: "position self-reported" |
-| Satellite source | Precomputed, hand-exported chips | Badge: "exported by hand" |
+| Satellite source (future (v0.7), not built) | Precomputed, hand-exported chips | Badge: "exported by hand" |
 | Database file | The seed script rebuilds it in under a minute | — |
 | Server laptop | A second laptop with the same repo, seed and photos | — |
 

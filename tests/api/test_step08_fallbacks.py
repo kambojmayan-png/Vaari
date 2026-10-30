@@ -1,9 +1,8 @@
 """Automated fallback tests for Step 08 (Testing Section 8)."""
 
+import time
 from datetime import date
 from pathlib import Path
-import time
-import pytest
 
 from app.config import settings
 from app.intake.hosted import HostedVisionReader

@@ -1,28 +1,33 @@
 """API routes for register photo intake, stored drafts, and human confirmation (Step 05)."""
 
-from datetime import date, datetime, timedelta, timezone
 import hashlib
-from pathlib import Path
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
-from fastapi import APIRouter, Depends, File, UploadFile, status
-from fastapi.responses import FileResponse
+
+from fastapi import APIRouter, Depends, File, Form, UploadFile, status
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from app import clock
-from app.auth import require_passcode
+from app.auth import Principal, require_operator
 from app.config import settings
 from app.db import get_db
 from app.enums import ServiceType
 from app.errors import VaariError
 from app.event_log import log_event
+from app.evidence.photos import read_image_upload
+from app.intake.preprocess import VALID_TURNS, preprocess_for_reader, rotate_clockwise
 from app.intake.prompt import PROMPT_VERSION
-from app.intake.reader import ReaderUnavailable, get_reader
-from app.intake.validate import has_blocking_issues, validate_row
+from app.intake.reader import ReaderUnavailable, get_reader, reader_name
+from app.intake.validate import has_blocking_issues, is_warning, validate_row
+from app.logging_setup import log_event as app_log_event
 from app.models import IntakePage, RegisterDraft
 from app.routes.common import get_or_create_home_centre
 from app.routes.requests import create_request_record
 from app.scheduler.service import run_for_centre
 from app.schemas import RequestIn
+from app.storage import get_photo_store
+from app.storage.sanitize import sanitize_image
 
 router = APIRouter(prefix="/intake", tags=["intake"])
 
@@ -38,30 +43,45 @@ def record_reader_failure() -> None:
 def clear_reader_failure() -> None:
     global _last_reader_failure_at
     _last_reader_failure_at = None
+    from app.intake.probe import probe_state, reset
+
+    if probe_state().get("status") == "failed":
+        reset()
 
 
 def get_reader_status_for_health() -> str:
-    """Return 'mock', 'hosted', or 'down' (down if last call failed within 5 minutes or misconfigured)."""
+    """Return 'mock', 'hosted', 'custom' or 'down' (down if the last call failed within 5 minutes or it is off)."""
     global _last_reader_failure_at
     now = clock.now_utc()
+    from app.intake.probe import probe_state
+
+    if probe_state().get("status") == "failed" and _last_reader_failure_at is not None:
+        return "down"  # a failed start-up probe stays visible until a real call succeeds
     if _last_reader_failure_at is not None:
         if (now - _last_reader_failure_at) <= timedelta(minutes=5):
             return "down"
 
-    mode = settings.reader.strip().lower()
+    mode = reader_name(settings)
     if mode == "mock":
-        return "mock"
-    if mode == "hosted":
+        # The mock refuses in production (it would invent rows), so show the fallback.
+        return "down" if settings.is_production else "mock"
+    if mode == "gemini_demo":
         if not settings.allow_hosted_reader:
             return "down"
         return "hosted"
+    if mode == "custom":
+        return "custom" if settings.custom_reader_url else "down"
     return "down"
 
 
 async def _validate_and_save_register_photo(
     file: UploadFile | None,
-) -> tuple[str, str, str]:
-    """Validate size and magic bytes, save under data/register_pages/, return (path, sha256, media_type)."""
+    rotate: int = 0,
+) -> tuple[str, str, bytes]:
+    """Validate, strip metadata and re-encode a register photo, store it.
+
+    Returns (stored ref, sha256 of the stored JPEG, the stored JPEG bytes).
+    """
     if file is None:
         raise VaariError(
             error_code="VALIDATION_ERROR",
@@ -70,49 +90,11 @@ async def _validate_and_save_register_photo(
             details={"field": "photo"},
         )
 
-    max_bytes = int(settings.max_photo_mb * 1024 * 1024)
-    raw = await file.read(max_bytes + 1)
-    if len(raw) > max_bytes:
-        raise VaariError(
-            error_code="PAYLOAD_TOO_LARGE",
-            message=f"Photo exceeds {settings.max_photo_mb} MB limit.",
-            http_status=413,
-            details={"max_mb": settings.max_photo_mb},
-        )
-
-    if len(raw) == 0:
-        raise VaariError(
-            error_code="VALIDATION_ERROR",
-            message="Uploaded file is empty.",
-            http_status=422,
-            details={"field": "photo"},
-        )
-
-    if raw.startswith(b"\xff\xd8\xff"):
-        ext = "jpg"
-        media_type = "image/jpeg"
-    elif raw.startswith(b"\x89PNG\r\n\x1a\n"):
-        ext = "png"
-        media_type = "image/png"
-    elif raw.startswith(b"RIFF") and len(raw) >= 12 and raw[8:12] == b"WEBP":
-        ext = "webp"
-        media_type = "image/webp"
-    else:
-        raise VaariError(
-            error_code="VALIDATION_ERROR",
-            message="Uploaded file is not a valid JPEG, PNG or WebP image.",
-            http_status=422,
-            details={"field": "photo"},
-        )
-
-    sha = hashlib.sha256(raw).hexdigest()
-    reg_dir = Path(settings.data_dir) / "register_pages"
-    reg_dir.mkdir(parents=True, exist_ok=True)
-    filename = f"register_{sha[:12]}.{ext}"
-    target_path = reg_dir / filename
-    target_path.write_bytes(raw)
-
-    return f"data/register_pages/{filename}", sha, media_type
+    raw = await read_image_upload(file)
+    clean = rotate_clockwise(sanitize_image(raw), rotate)
+    sha = hashlib.sha256(clean).hexdigest()
+    ref = get_photo_store().put("register_pages", f"register_{sha[:12]}.jpg", clean)
+    return ref, sha, clean
 
 
 def _serialize_intake_page(session: Session, page: IntakePage) -> dict[str, Any]:
@@ -122,9 +104,15 @@ def _serialize_intake_page(session: Session, page: IntakePage) -> dict[str, Any]
         .order_by(RegisterDraft.row_no.asc())
         .all()
     )
+    reader_name_for_page, third_party = {
+        "hosted": ("gemini_demo", True),
+        "custom": ("custom", False),
+    }.get(page.reader, (page.reader, False))
     return {
         "intake_id": page.id,
         "reader": page.reader,
+        "reader_name": reader_name_for_page,
+        "third_party": third_party,
         "latency_ms": page.latency_ms,
         "status": page.status,
         "rows": [
@@ -142,10 +130,21 @@ def _serialize_intake_page(session: Session, page: IntakePage) -> dict[str, Any]
 @router.post("/register-photo")
 async def upload_register_photo(
     photo: UploadFile | None = File(None),
+    rotate: int = Form(0),
     session: Session = Depends(get_db),
-    _passcode: str = Depends(require_passcode),
+    _principal: Principal = Depends(require_operator),
 ) -> dict[str, Any]:
-    image_path, image_sha256, media_type = await _validate_and_save_register_photo(photo)
+    if rotate not in VALID_TURNS:
+        raise VaariError(
+            error_code="VALIDATION_ERROR",
+            message="rotate must be 0, 90, 180 or 270.",
+            http_status=422,
+            details={"field": "rotate"},
+        )
+    image_path, image_sha256, stored_bytes = await _validate_and_save_register_photo(photo, rotate)
+    # Every reader gets the preprocessed copy: upright, 1000-2000 px, greyscale, contrast stretched.
+    reader_bytes, _prep = preprocess_for_reader(stored_bytes)
+    media_type = "image/jpeg"
 
     home_centre = get_or_create_home_centre(session)
     now = clock.now_utc()
@@ -155,7 +154,7 @@ async def upload_register_photo(
         image_path=image_path,
         image_sha256=image_sha256,
         image_delete_after=now + timedelta(days=7),
-        reader=settings.reader,
+        reader={"gemini_demo": "hosted"}.get(reader_name(settings), reader_name(settings)),
         prompt_version=PROMPT_VERSION,
         latency_ms=None,
         status="drafted",
@@ -165,15 +164,14 @@ async def upload_register_photo(
     session.add(page)
     session.flush()
 
-    disk_path = Path(settings.data_dir) / "register_pages" / Path(image_path).name
-    raw_bytes = disk_path.read_bytes()
 
     try:
         reader = get_reader(settings)
-        draft_result = reader.read(raw_bytes, media_type=media_type)
+        draft_result = reader.read(reader_bytes, media_type=media_type)
         clear_reader_failure()
     except (ReaderUnavailable, Exception) as exc:
         record_reader_failure()
+        app_log_event("reader call", event="reader_call", reader=settings.reader, ok=False, error_type=type(exc).__name__)
         page.status = "failed"
         page.error = str(exc)
         log_event(
@@ -190,8 +188,12 @@ async def upload_register_photo(
             message="Reader unavailable: type the rows.",
             http_status=503,
             details={"intake_id": page.id},
-        )
+        ) from exc
 
+    app_log_event(
+        "reader call", event="reader_call", reader=draft_result.reader, ok=True,
+        latency_ms=draft_result.latency_ms, rows=len(draft_result.rows),
+    )
     page.reader = draft_result.reader
     page.prompt_version = draft_result.prompt_version
     page.latency_ms = draft_result.latency_ms
@@ -228,7 +230,7 @@ async def upload_register_photo(
 def get_intake_draft(
     id: int,
     session: Session = Depends(get_db),
-    _passcode: str = Depends(require_passcode),
+    _principal: Principal = Depends(require_operator),
 ) -> dict[str, Any]:
     page = session.query(IntakePage).filter_by(id=id).first()
     if page is None or page.status == "confirmed":
@@ -244,7 +246,7 @@ def get_intake_draft(
 def get_intake_image(
     id: int,
     session: Session = Depends(get_db),
-    _passcode: str = Depends(require_passcode),
+    _principal: Principal = Depends(require_operator),
 ):
     page = session.query(IntakePage).filter_by(id=id).first()
     if page is None:
@@ -254,13 +256,11 @@ def get_intake_image(
             http_status=404,
         )
 
-    candidate = Path(page.image_path)
-    if not candidate.exists():
-        candidate = Path(settings.data_dir) / "register_pages" / Path(page.image_path).name
-    if not candidate.exists():
+    store = get_photo_store()
+    if not page.image_path or not store.exists(page.image_path):
         raise VaariError("NOT_FOUND", "Register page image file not found.", 404)
 
-    return FileResponse(candidate)
+    return Response(content=store.get(page.image_path), media_type="image/jpeg")
 
 
 @router.post("/{id}/confirm", status_code=status.HTTP_201_CREATED)
@@ -268,7 +268,7 @@ def confirm_intake(
     id: int,
     payload: dict[str, Any],
     session: Session = Depends(get_db),
-    _passcode: str = Depends(require_passcode),
+    _principal: Principal = Depends(require_operator),
 ) -> dict[str, Any]:
     page = session.query(IntakePage).filter_by(id=id).first()
     if page is None or page.status == "confirmed":
@@ -333,9 +333,7 @@ def confirm_intake(
             row_issues.append("consent_service: farmer service consent is required")
 
         if has_blocking_issues(row_issues):
-            blocking = [
-                iss for iss in row_issues if iss != "acres: unusually large, check the register"
-            ]
+            blocking = [iss for iss in row_issues if not is_warning(iss)]
             first_issue = blocking[0] if blocking else row_issues[0]
             failing_field = first_issue.split(":")[0].strip() if ":" in first_issue else "row"
             errors.append(
@@ -429,6 +427,7 @@ def confirm_intake(
 def purge_expired_register_images(session: Session, dry_run: bool = False) -> list[str]:
     """Delete register page images past image_delete_after and return deleted paths."""
     now = clock.now_utc()
+    store = get_photo_store()
     pages = session.query(IntakePage).all()
     deleted: list[str] = []
 
@@ -439,13 +438,10 @@ def purge_expired_register_images(session: Session, dry_run: bool = False) -> li
         if del_after.tzinfo is None:
             del_after = del_after.replace(tzinfo=timezone.utc)
         if del_after <= now and p.image_path:
-            img_file = Path(p.image_path)
-            if not img_file.exists():
-                img_file = Path(settings.data_dir) / "register_pages" / Path(p.image_path).name
-            if img_file.exists():
-                deleted.append(str(img_file))
+            if store.exists(p.image_path):
+                deleted.append(p.image_path)
                 if not dry_run:
-                    img_file.unlink(missing_ok=True)
+                    store.delete(p.image_path)
                     log_event(
                         session=session,
                         actor="system",

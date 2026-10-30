@@ -2,17 +2,17 @@
 """Load a GeoJSON FeatureCollection with request_id properties and attach polygons to plots."""
 
 import json
-from pathlib import Path
 import sys
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from app.db import get_session_factory
-from app.enums import to_x100
-from app.evidence.area import acres_of_polygon, centroid_of_polygon
-from app.models import Plot, Request
+from app.db import get_session_factory  # noqa: E402  (after the sys.path line above)
+from app.enums import to_x100  # noqa: E402  (after the sys.path line above)
+from app.evidence.area import acres_of_polygon, centroid_of_polygon  # noqa: E402  (after the sys.path line above)
+from app.models import Plot, Request  # noqa: E402  (after the sys.path line above)
 
 
 def load_plots_from_geojson(file_path: Path) -> int:

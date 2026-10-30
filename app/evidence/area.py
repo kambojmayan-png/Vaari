@@ -5,8 +5,9 @@ Pure functions: no database, no clock, no side effects.
 
 import json
 from typing import Any
+
 from pyproj import Geod
-from shapely.geometry import Polygon, MultiPolygon, shape
+from shapely.geometry import MultiPolygon, Polygon, shape
 
 _GEOD = Geod(ellps="WGS84")
 SQM_PER_ACRE = 4046.8564224

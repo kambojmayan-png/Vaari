@@ -1,0 +1,27 @@
+# Vaari pilot: one server for one hiring centre. See docs/DEPLOY.md.
+services:
+  vaari:
+    build: .
+    image: vaari:pilot
+    env_file: .env
+    environment:
+      VAARI_ENV: production
+      VAARI_DB_PATH: /data/vaari.sqlite
+      VAARI_DATA_DIR: /data
+      VAARI_BACKUP_DIR: /data/backups
+    ports:
+      # Only on this machine. Put HTTPS in front (docs/DEPLOY.md, step 6); phones need HTTPS for camera and GPS.
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - vaari-data:/data
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+volumes:
+  vaari-data:

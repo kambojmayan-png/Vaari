@@ -46,3 +46,7 @@ web/playwright-report/
 vaari-phase-1/
 vaari-phase-2/
 vaari-phase-3/
+
+# Backups contain personal data (pilot v0.2)
+backups/
+*.pre-restore-*

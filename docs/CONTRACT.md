@@ -14,7 +14,7 @@ This file is the single source of truth for the v0.1 build. Three people build V
 | --- | --- | --- |
 | Language | Python 3.11 or newer | |
 | API | FastAPI, Pydantic v2, uvicorn | |
-| Database | SQLite in WAL mode, `busy_timeout = 5000`, via SQLAlchemy 2.x (sync) | No Alembic. Tables are created at startup with `create_all`. `reset` deletes the file |
+| Database | SQLite in WAL mode, `busy_timeout = 5000`, via SQLAlchemy 2.x (sync) | Since pilot v0.2: Alembic migrations in `migrations/`, run at start-up (§15.7). `reset` deletes the file |
 | Uploads | python-multipart | |
 | Geometry | shapely 2 and pyproj | Phase 3 uses them. Phase 1 lists them in `requirements.txt` already |
 | Config | python-dotenv | |
@@ -75,7 +75,7 @@ vaari/
 | `serve` | `build-web`, then uvicorn on `0.0.0.0:8000` serving the API and the built frontend | 1 (API only), 2 |
 | `e2e` | Start `serve` on a temporary database, run Playwright, stop the server | 2 |
 | `tunnel` | Run `cloudflared tunnel --url http://localhost:8000` if cloudflared is installed, otherwise print how to install it | 2 |
-| `reader-eval` | Run the configured reader on `examples/register_pages/` and print counts | 3 |
+| `reader-eval` | Run the configured reader on `examples/register_pages/` and print counts. *(Pilot v0.2: per-field k of N per page, silent errors, common errors, pass bar; writes `docs/READER_EVAL.md`.)* | 3 |
 | `purge-images [--dry-run]` | Delete register page images past `image_delete_after` | 3 |
 
 ## 4. Configuration (`.env`)
@@ -96,10 +96,10 @@ vaari/
 | `VAARI_DEMO_PLOT_LAT`, `VAARI_DEMO_PLOT_LON` | the centre's position | Where the live demo job's plot is. Set it to the hall on the day |
 | `VAARI_CENTRE_LAT`, `VAARI_CENTRE_LON`, `VAARI_CENTRE_NAME`, `VAARI_CENTRE_PHONE` | a demo centre | The home centre for the seed |
 | `VAARI_PUBLIC_BASE_URL` | empty | The tunnel URL, used to build full record and driver links |
-| `VAARI_READER` | `mock` | Phase 3: `mock` or `hosted` |
+| `VAARI_READER` | `mock` | Phase 3: `mock` or `hosted`. *(Pilot v0.2, §15.13: `mock`, `gemini_demo` or `custom`; `hosted` still means `gemini_demo`.)* |
 | `VAARI_ALLOW_HOSTED_READER` | `false` | Phase 3: must be `true` before any image goes to a hosted model |
-| `VAARI_VISION_PROVIDER` | `gemini` | Phase 3: `gemini` or `anthropic` |
-| `VAARI_VISION_MODEL` | empty | Phase 3: a current vision model name from the provider |
+| `VAARI_VISION_PROVIDER` | `gemini` | Phase 3: `gemini` or `anthropic`. *(Pilot v0.2: `gemini` only.)* |
+| `VAARI_VISION_MODEL` | empty | Phase 3: a current vision model name from the provider. *(Pilot v0.2: required when the hosted reader is on; no default in the code.)* |
 | `GEMINI_API_KEY`, `ANTHROPIC_API_KEY` | empty | Phase 3 |
 | `VAARI_READER_TIMEOUT_S` | `20` | Phase 3 |
 
@@ -219,7 +219,7 @@ If no alternative centre exists, the next action ends with "another centre" inst
 | `not-served` | `scheduled` or `in_progress` | Auth. A reason from the enum | 409 `INVALID_TRANSITION`, 422 |
 
 - **Auth for slot actions:** header `X-Vaari-Slot-Token` equal to the slot's `link_token`, or the operator passcode header. A slot token that belongs to a different slot gives 403 `WRONG_SLOT`. Nothing at all gives 401.
-- **Photos:** accept JPEG, PNG or WebP, checked by magic bytes, not only by content type. Save as `data/photos/{slot_id}_{kind}_{sha256[:12]}.{ext}`. SHA-256 of the raw uploaded bytes.
+- **Photos:** accept JPEG, PNG or WebP, checked by magic bytes, not only by content type. Save as `data/photos/{slot_id}_{kind}_{sha256[:12]}.{ext}`. SHA-256 of the raw uploaded bytes. *(Changed in pilot v0.2, §15.8: metadata is stripped and the image re-encoded as JPEG before saving; the name ends `.jpg` and the SHA-256 and size are of the stored file.)*
 - **Without evidence consent** the job closes with times only, and the record says "times only: no evidence consent".
 - **Checks.** At `done`, `evidence/checks.py: run_checks(session, slot) -> list[str]` returns flags. Phase 1 ships it returning `[]` and every position as `not_checked`. Phase 3 fills it in. `needs_review = len(flags) > 0`. Flags never change a status and never block.
 - **At `done`:** create the `service_record` with a new token and the hash below; set the request to `done`; write `event_log` rows for start, done, record and every check.
@@ -365,7 +365,7 @@ All seeded data is fictional and every seeded request carries the `seeded reques
 
 ## 13. Frontend contract (phase 2)
 
-- Routes: `/` redirects to `/desk`; `/desk`; `/driver/:machineToken`; `/officer`; `/record/:token`; `/intake` (phase 3).
+- Routes: `/` redirects to `/desk`; `/desk`; `/driver/:machineToken`; `/officer`; `/record/:token`; `/intake` (phase 3). *(Pilot v0.2 adds `/driver` and `/record`: operator pickers that open a real driver view or record.)*
 - The API base is `/api`. In dev, Vite proxies `/api` to `127.0.0.1:8000`. In serve mode, FastAPI serves `web/dist` at `/` with an SPA fallback for every path not under `/api`. One origin, so no CORS and one tunnel.
 - The passcode is entered once on Desk or Officer and kept in `sessionStorage`. Driver and Record pages never ask for it.
 - `web/src/api.ts` is the only file that calls `fetch`. It turns every error into `{error_code, message, details}` and the UI switches on `error_code`.
@@ -381,3 +381,126 @@ All seeded data is fictional and every seeded request carries the `seeded reques
 | 3 | Antigravity | Intake (reader, routes, confirmation screen), polygons and position checks, evidence flags, fallback tests, full end-to-end, demo readiness, then Tier 2 if time allows | — |
 
 Each phase ends by writing its section of `HANDOFF.md`, running every test, and pushing a git tag: `phase-1-done`, `phase-2-done`, `phase-3-done`.
+
+## 15. Pilot hardening (v0.2): additive changes
+
+This section records every change made for the one-centre pilot. Each one is additive unless it says otherwise, and each is also listed in `HANDOFF.md` under "Pilot build (v0.2) / Contract changes".
+
+### 15.1 Configuration added
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `VAARI_ENV` | `development` | `development` or `production`. Production refuses to start with unsafe settings (see 15.2) |
+| `VAARI_ALLOW_HOSTED_READER_IN_PRODUCTION` | `false` | Explicit override. Without it, production refuses to start while any hosted reader is enabled |
+| `VAARI_SECRET_KEY` | empty | Signs login sessions. Required in production, at least 32 characters. In development an empty value means a random key per process |
+| `VAARI_SESSION_HOURS` | `12` | How long a sign-in lasts |
+| `VAARI_LOGIN_RATE_PER_MIN` | `10` | Sign-in attempts per client address per minute |
+| `VAARI_LOGIN_LOCKOUT_FAILURES` | `5` | Wrong passwords for one username (within the lockout window) before it is locked |
+| `VAARI_LOGIN_LOCKOUT_MINUTES` | `15` | Lockout window and length |
+| `VAARI_UPLOAD_RATE_PER_MIN` | `30` | Photo uploads (`register-photo`, slot `start`, slot `done`) per client address per minute |
+| `VAARI_DRIVER_LINK_DAYS` | `30` | Lifetime of a new driver link (machine token) |
+| `VAARI_RECORD_LINK_DAYS` | `365` | Lifetime of a new service-record link |
+| `VAARI_PHOTO_STORE` | `local` | Where photos are kept. Only `local` is built; any other value is refused at start-up |
+| `VAARI_BACKUP_DIR` | `backups` | Where `python tasks.py backup` writes |
+| `VAARI_CORS_ORIGINS` | empty | Exact origins allowed to call the API cross-origin. Empty = no CORS headers at all. Production refuses `*` and non-`https://` entries |
+| `VAARI_TRUST_PROXY` | `false` | Take the client address from the first `X-Forwarded-For` value. Turn on only behind your own reverse proxy |
+
+### 15.2 Production start-up checks
+
+With `VAARI_ENV=production` the app refuses to start, and lists every problem, when:
+
+- `VAARI_SECRET_KEY` is empty, a default value (`change-me` and similar), or shorter than 32 characters. (Item A1 first checked `VAARI_DEMO_PASSCODE` with a 16-character minimum. Item A2 switches the shared passcode off in production, so the check moved to the secret that now guards every sign-in. The passcode's value no longer matters in production);
+- a hosted reader is enabled (`VAARI_READER` other than `mock`, or `VAARI_ALLOW_HOSTED_READER=true`) and `VAARI_ALLOW_HOSTED_READER_IN_PRODUCTION` is not `true`.
+
+`python tasks.py check-config` prints the same list without starting the server. Any other `VAARI_ENV` value is refused in every mode.
+
+### 15.3 Accounts, roles and sessions (A2)
+
+- **Tables.** `user_account` — id · username str unique (stored lower-case) · password_hash str (argon2id) · role str (`operator` | `officer`) · active bool · created_at · last_login_at null. `auth_session` — id · sid_sha256 str unique · user_id fk · created_at · expires_at · revoked_at null. Only a SHA-256 of the session id is stored.
+- **Session token.** `v1.<sid>.<expires_unix>.<hmac>`, HMAC-SHA256 with `VAARI_SECRET_KEY`. Sent as `Authorization: Bearer <token>`. Valid only if the signature matches, it has not expired, the session row is not revoked, and the account is active.
+- **Shared passcode.** `X-Vaari-Passcode` works in development only, where it acts with both roles. In production it is always refused with 401.
+- **Roles.**
+
+| Routes | operator | officer |
+| --- | --- | --- |
+| Requests, plots, intake, schedule run, `GET /api/schedule`, `GET /api/slots`, slot messages, slot actions, machine create and patch | yes | no (403 `FORBIDDEN`) |
+| `GET /api/dashboard/summary`, `GET /api/dashboard/usage.csv`, `GET /api/schedule/will-miss`, `GET /api/machines` | yes | yes. Officers get `driver_path: ""` |
+
+- **New routes.** `POST /api/auth/login` `{username, password}` → `{token, token_type: "bearer", expires_at, user: {username, role}}`, or 401 `UNAUTHORIZED` "Wrong username or password." (same answer for an unknown user, a wrong password and a disabled account). `POST /api/auth/logout` (Bearer) → 204 and the session is revoked. `GET /api/auth/me` → `{username, roles, via}`.
+- **New error code.** `FORBIDDEN` 403: signed in, but the role cannot use the route.
+- **Health.** `GET /api/health` adds `env` (`development` | `production`) and `auth` (`passcode` | `accounts`).
+- **Slot actions.** `start`, `done` and `not-served` answer 401 before looking up the slot when the caller sent no credential at all (it used to be 404 for an unknown slot id).
+- **event_log.** Rows written by a signed-in account name it: `operator:asha`. Passcode actions stay `operator`.
+- **Commands.** `python tasks.py create-user --username NAME --role operator|officer [--password-stdin]` (passwords at least 12 characters), `disable-user --username NAME` (also signs out every session), `list-users`, `openapi` (regenerates `docs/openapi.json`).
+- **Frontend.** When `health.auth` is `accounts`, Desk, Intake and Officer show a username and password form, keep the session token in `sessionStorage`, and show "Sign out". Officer opens for `officer` or `operator`; Desk and Intake for `operator`. In development the screens open with the demo passcode as before.
+
+### 15.4 Rate limits and lockout (A3)
+
+- **New error code.** `RATE_LIMITED` 429, with a `Retry-After` header and `details.retry_after_s`.
+- **Per address.** `POST /api/auth/login` and the three photo uploads are counted per client address in a 60-second sliding window, checked in middleware before the body is read.
+- **Per username.** After `VAARI_LOGIN_LOCKOUT_FAILURES` wrong passwords within the window, the username is locked for `VAARI_LOGIN_LOCKOUT_MINUTES`, even for the right password. Unknown usernames get the same answer, so the response does not reveal which accounts exist. A successful sign-in clears the count. Locking a real account writes `event_log` `login_locked`.
+- **Scope.** Counts live in memory in one server process and reset on restart. That fits one server at one centre.
+
+### 15.5 Link expiry and revocation (A4)
+
+- **Columns.** `machine.link_expires_at`, `machine.link_revoked_at`, `service_record.token_expires_at`, `service_record.token_revoked_at` (all datetime, null). A null expiry means "does not expire", so rows made before v0.2 keep working until rotated. New machines and new records always get an expiry.
+- **New error code.** `LINK_EXPIRED` 410 with `details.reason` `expired` or `revoked`. Returned by `GET /api/driver/{machine_token}`, `GET /api/slots` with `X-Vaari-Machine-Token`, slot actions made with a slot token whose machine link is expired or off, `GET /api/records/{token}` and `.../verify`. Operators can still act on any slot.
+- **New routes (operator).** `POST /api/machines/{id}/link/rotate` → `MachineOut` with a new token and expiry; the old link and every slot token it handed out for `scheduled` or `in_progress` slots stop working. `POST /api/machines/{id}/link/revoke` → `MachineOut`, link off now. `POST /api/slots/{id}/record/revoke` and `POST /api/slots/{id}/record/reissue` → `{slot_id, record_token, record_url, status, expires_at}`. Turning off or reissuing a record link never changes the record or its hash (the token is not hashed).
+- **MachineOut** adds `driver_link_status` (`active` | `expired` | `revoked`) and `driver_link_expires_at`.
+- **event_log.** `driver_link_rotated`, `driver_link_revoked`, `link_revoked`, `link_reissued`.
+
+### 15.6 CORS and security headers (A5)
+
+- **CORS.** Off unless `VAARI_CORS_ORIGINS` lists origins; then only those exact origins get `Access-Control-Allow-Origin`, without credentials (sessions use the `Authorization` header). Preflights from other origins get 400. Section 13's "one origin, so no CORS" stays the normal set-up.
+- **Headers on every response.** `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer` (driver and record tokens are in URLs), `Permissions-Policy: camera=(self), geolocation=(self), microphone=(), payment=(), usb=()`, `Cross-Origin-Opener-Policy: same-origin`, `Cross-Origin-Resource-Policy: same-origin`, and `Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://tile.openstreetmap.org; connect-src 'self'; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'`. `/api` responses add `Cache-Control: no-store`. Production adds `Strict-Transport-Security: max-age=31536000; includeSubDomains`.
+
+### 15.7 Migrations (B6)
+
+- `migrations/versions/0001_baseline.py` is exactly the v0.1.0 schema. `0002_pilot_accounts_links.py` adds Part A's tables and columns. New schema changes get a new revision (`python tasks.py db-revision "message"`), never an edit to an old one.
+- Start-up, `reset`, `seed`, `purge-images`, `create-user` and `migrate` all call `app.migrate.ensure_schema()`, which upgrades to head. A database made by `create_all` (no `alembic_version` table) is stamped with the revision its tables match (`0001` for v0.1.0, `0002` for a Part A build) and then upgraded, keeping its data.
+- `python tasks.py migrate` upgrades; `migrate --status` prints the current and head revisions.
+- A test checks that a fresh migration matches the models exactly (`alembic.autogenerate.compare_metadata` finds no difference), and the test suite's databases are built by the migrations.
+- `reset` and `seed` refuse to run when `VAARI_ENV=production` unless given `--yes-delete-everything`.
+
+### 15.8 Photo storage and metadata stripping (B7)
+
+- **Interface.** `app/storage.PhotoStore` (`put`, `get`, `exists`, `delete`). `LocalDiskStore` keeps files under `VAARI_DATA_DIR/photos/` and `VAARI_DATA_DIR/register_pages/`, written atomically. `S3CompatibleStore` is a named placeholder that raises "not built"; `VAARI_PHOTO_STORE=s3` makes start-up refuse in every mode. Nothing outside `app/storage/` touches photo files.
+- **Clean before saving.** Every uploaded image (start, done and register pages) is decoded, turned upright from its EXIF orientation, flattened to RGB and saved again as JPEG (quality 88) with no EXIF, GPS, XMP, ICC profile or comments. Images over 40 million pixels, and files that cannot be decoded, get 422 `VALIDATION_ERROR`. The same input always gives the same bytes.
+- **Not additive (asked for by the brief).** `evidence.photo_sha256`, `evidence.photo_bytes` and `intake_page.image_sha256` are now of the *stored, cleaned* file, not the raw upload, so the stored file can always be checked against the record hash. Exact-duplicate detection (`exact_duplicate_photo`) compares these hashes, so it still catches the same photo sent twice. Stored names end in `.jpg`. `GET /api/intake/{id}/image` always returns `image/jpeg`. Response shapes are unchanged.
+
+### 15.9 Backup and restore (B8)
+
+- `python tasks.py backup [--out DIR] [--keep N]` writes `vaari-backup-<UTC time>/` with `vaari.sqlite` (SQLite online backup API, so it is safe while the server runs and includes writes still in the WAL), `photos/`, `register_pages/` and `manifest.json` (SHA-256 of every file, row counts, schema revision). The copy must pass `PRAGMA integrity_check` or the backup fails. `--keep N` removes all but the newest N.
+- `python tasks.py restore DIR [--force] [--verify-only]` checks every hash, refuses extra or missing files, checks integrity, and only then moves the current database (and `-wal`/`-shm`) and photo folders aside as `*.pre-restore-<time>`, copies the backup in, and upgrades the schema to head. Without `--force` it refuses when a database already exists. Stop the server first.
+
+### 15.10 Logs, request IDs and readiness (C9)
+
+- **Logs.** One JSON object per line on stdout: `ts`, `level`, `logger`, `msg`, `request_id` (inside a request) and a fixed allow-list of fields (`event`, `method`, `route`, `status`, `duration_ms`, `env`, `auth`, `reader`, `revision`, `latency_ms`, `rows`, `ok`, `error_type`, `where`, ...). One `request` line per request with the **route template** (`/api/records/{token}`), never the real path or query string. Never logged: names, phone numbers, images, bodies, reader output. A filter masks anything shaped like a mobile number, a link token or a Bearer value. uvicorn's access log is off (it prints raw paths); `app/uvicorn_logging.json` makes uvicorn's own lines JSON too. `httpx` is held at WARNING because a hosted reader's URL can carry its key.
+- **Request IDs.** Every response has `X-Request-ID`. A well-formed incoming one (8 to 64 of `A-Z a-z 0-9 . _ -`) is kept; anything else is replaced.
+- **Unhandled errors** give 500 `{error_code: "INTERNAL_ERROR", message, details: {request_id}}` (new error code) and log only the exception type and code location, because database errors can quote personal values.
+- **`GET /api/ready`** (public): 200 `{status: "ready", checks: {database, migrations, storage, reader}}` when the database answers, the schema is at head and the data folder is writable; otherwise 503 `NOT_READY` (new error code) with `details.checks`. A reader that is down does not make the server unready, because typing rows is the visible fallback.
+
+### 15.11 Docker deployment (C10)
+
+- `Dockerfile`: two stages (Node 22 builds `web/dist`; Python 3.12 runs it), user `vaari` (uid 10001), `VAARI_ENV=production`, data in `/data` (`VAARI_DB_PATH=/data/vaari.sqlite`, `VAARI_DATA_DIR=/data`, `VAARI_BACKUP_DIR=/data/backups`), `HEALTHCHECK` on `/api/ready`, uvicorn with `--no-access-log --log-config app/uvicorn_logging.json`. Base images can be swapped with `--build-arg PYTHON_IMAGE=... NODE_IMAGE=...`.
+- `docker-compose.yml`: volume `vaari-data:/data`, `env_file: .env`, port bound to `127.0.0.1:8000`, read-only root filesystem, `no-new-privileges`, all capabilities dropped. `.env.production.example` is the starting `.env`.
+- `docs/DEPLOY.md`: fresh clone to running server, accounts, HTTPS, links, backups, restore and upgrades.
+- **Mock reader in production.** `MockRegisterReader` refuses when `VAARI_ENV=production`, because it returns the same invented rows for any photo. Register upload then gives 503 `READER_UNAVAILABLE` and keeps the photo, so staff type the rows beside it. `/api/health` reports `reader: "down"` in that case (an existing enum value).
+- A start-up refusal is logged as one JSON line, `event: "refused_to_start"`, listing every problem.
+
+### 15.12 CI (C11)
+
+`.github/workflows/ci.yml` runs on every push and pull request: `ruff check .` (rules in `ruff.toml`: pycodestyle, pyflakes, bugbear, import order), pytest plus a check that unsafe production settings are refused, `pip-audit -r requirements.txt`, `npm audit --audit-level=high` (the two moderate react-router advisories are assessed in `notes/npm-audit.md`), the web build, the Playwright suite through `python tasks.py e2e` (both passes), and a Docker build with a smoke test (refuses without a secret, becomes healthy, runs as non-root, refuses the passcode). `web/playwright.config.ts` takes an optional `PLAYWRIGHT_CHROMIUM_EXECUTABLE` for machines with a preinstalled Chromium.
+
+### 15.13 Register reader interface (Part 5)
+
+- `app/intake/reader.py` defines `RegisterReader.read(image, media_type) -> RegisterDraft` and `get_reader()`. Nothing else in the app imports a concrete reader.
+- **Implementations.** `mock` (default; refuses in production), `gemini_demo` (`app/intake/hosted.py`, Google Gemini, DEMO ONLY, off unless `VAARI_ALLOW_HOSTED_READER=true`), and `custom` (`app/intake/custom.py`, a stub client for a future model at `VAARI_CUSTOM_READER_URL`, optional `VAARI_CUSTOM_READER_TOKEN`). `VAARI_READER=hosted` is kept as an alias of `gemini_demo`.
+- **No hard-coded model names.** The Gemini reader has no default model; `VAARI_VISION_MODEL` is required when it is on, and start-up refuses (any mode) without it or without `GEMINI_API_KEY`. The key is sent in the `x-goog-api-key` header, never in the URL. Error text keeps the HTTP status only, never the provider's body.
+- **Anthropic provider removed** (the brief names Gemini for the demo). `VAARI_VISION_PROVIDER` accepts `gemini` only; `ANTHROPIC_API_KEY` is gone from `.env.example`.
+- **Custom reader contract.** `POST` JSON `{image_base64, media_type, prompt_version, fields}` → the same `{rows: [{row, fields, confidence}]}` JSON as the hosted reader. `VAARI_READER=custom` needs the URL; production refuses a plain-`http://` URL unless it is on this machine or a private network. It is not treated as a third party.
+- **Health.** `reader` may also be `custom` (additive enum value).
+- **Start-up probe.** With `gemini_demo` switched on, or `custom`, start-up sends one synthetic 320×96 "VAARI PROBE" image through the reader in a background thread (`VAARI_READER_PROBE`, default `true`). `GET /api/health` adds `reader_detail` `{name, kind, provider, model, third_party, demo_only, probe: {status: not_run | pending | ok | failed, provider, model, latency_ms, checked_at, rows | error}}`. A failed probe makes `reader` report `down` until a real call succeeds.
+- **Intake banner.** `/intake` always shows `#intake-privacy-banner`, naming the reader in use (`#intake-reader-name`) and where photos go (`#intake-reader-destination`): for `gemini_demo`, "Photos you upload here are sent to Google, a third party. Use synthetic pages only." (red); for `custom`, the host; for `mock`, "No photo leaves this server." When the reader is `down` it adds the type-the-rows fallback. `IntakeOut` adds `reader_name` and `third_party` (additive).
+- **Preprocessing** (`app/intake/preprocess.py`) runs before every reader: EXIF orientation (applied when the upload is cleaned), an optional operator turn (`POST /api/intake/register-photo` adds form field `rotate`: 0, 90, 180 or 270 clockwise, else 422; applied to the stored page too), long side brought to 1000-2000 px (under 400 px left alone), greyscale and a 1% autocontrast stretch. The stored page keeps its colours; only the reader's copy is changed. The intake screen has a "Turn the photo before reading" choice (`#intake-rotate`).
+- **Gurmukhi digits and mixed entries** (`app/intake/normalize.py`, used by `validate_row` for every reader and for typed rows). Gurmukhi (੦–੯) and Devanagari digits become 0–9 in phones, acres and dates. Phones: labels (ਫ਼ੋਨ:, Mob.), spaces, dashes, brackets and the danda are dropped; a leading +91, 91 or 0 is removed. Acres: unit words ਏਕੜ, ਕਿੱਲੇ/ਕਿੱਲਾ, acre(s), killa/kille are dropped; ½ ¼ ¾ and "2 1/2" are read; **kanal is converted at 8 kanal = 1 acre with a warning that highlights the cell but does not block** (new non-blocking issue text "acres: converted from N kanal (8 kanal = 1 acre), check the register"). Service: Gurmukhi and English words in any mix (ਸੁਪਰ seeder, Super ਸੀਡਰ, ਸੁਪਰਸੀਡਰ, ਬੇਲਰ (baler), S.S.). Dates: Punjabi and English month names ("੧੮ ਅਕਤੂਬਰ", "18 Oct", "Oct 18"). Names and villages are kept as written. Nothing is guessed: unreadable cells stay as written and are flagged.

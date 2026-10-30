@@ -1,7 +1,9 @@
 """Evidence integrity and anomaly checks (Contract Section 9 & Step 07)."""
 
 from datetime import timezone
+
 from sqlalchemy.orm import Session
+
 from app.config import settings
 from app.enums import from_x100
 from app.event_log import log_event

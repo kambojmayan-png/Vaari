@@ -1,8 +1,6 @@
 """Unit tests for tunnel passcode safety enforcement (item 9)."""
 
-import os
-import pytest
-from tasks import validate_tunnel_passcode, task_tunnel
+from tasks import task_tunnel, validate_tunnel_passcode
 
 
 def test_validate_tunnel_passcode_empty():
