@@ -76,7 +76,7 @@ def test_no_hard_coded_model_names_in_the_code():
 
     app_dir = Path(__file__).resolve().parents[2] / "app"
     src = "".join(p.read_text(encoding="utf-8") for p in app_dir.rglob("*.py"))
-    for name in ("gemini-2.5", "gemini-1.5", "gemini-2.0", "claude-3", "claude-3-5"):
+    for name in ("gemini-2.5", "gemini-1.5", "gemini-2.0", "gemini-3", "flash-lite", "claude-3", "claude-3-5"):
         assert name not in src, name
 
 
@@ -108,12 +108,12 @@ def test_gemini_reader_sends_the_key_in_a_header_not_the_url(monkeypatch):
     monkeypatch.setattr("app.intake.hosted.httpx.Client", FakeClient)
     monkeypatch.setenv("GEMINI_API_KEY", "synthetic-key-123")
     s = S()
-    s.reader, s.allow_hosted_reader, s.vision_model = "gemini_demo", True, "model-x"
+    s.reader, s.allow_hosted_reader, s.vision_model = "gemini_demo", True, "gemini-model-x"
     draft = GeminiDemoReader(settings=s).read(b"\xff\xd8\xffimage")
     assert draft.rows[0].fields["phone"] == "9000000101"
     assert "synthetic-key-123" not in seen["url"] and "key=" not in seen["url"]
     assert seen["headers"]["x-goog-api-key"] == "synthetic-key-123"
-    assert "/models/model-x:generateContent" in seen["url"]
+    assert "/models/gemini-model-x:generateContent" in seen["url"]
     assert seen["body"]["generationConfig"]["responseMimeType"] == "application/json"
 
 
@@ -200,3 +200,14 @@ def test_no_training_data_is_collected_or_stored():
     names = {t.name for t in Base.metadata.tables.values()}
     cols = {c.name for t in Base.metadata.tables.values() for c in t.columns}
     assert not any("train" in n for n in names | cols)
+
+
+@pytest.mark.parametrize(
+    "raw, expected",
+    [("9.9-test", "gemini-9.9-test"), ("gemini-x", "gemini-x"), ("models/gemini-x", "gemini-x"), ("  ", "")],
+)
+def test_model_name_prefix_is_normalised_but_never_defaulted(raw, expected):
+    """From main 23aac6a: a missing 'gemini-' prefix is added. Pilot rule: no default model."""
+    from app.intake.hosted import normalize_model_name
+
+    assert normalize_model_name(raw) == expected

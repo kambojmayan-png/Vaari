@@ -31,6 +31,20 @@ from app.intake.reader import ReaderInfo, ReaderUnavailable, RegisterDraft
 GEMINI_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
 
+def normalize_model_name(raw: str) -> str:
+    """'x-pro' -> 'gemini-x-pro'; 'models/gemini-x' -> 'gemini-x'; '' stays ''.
+
+    Kept from main (23aac6a): people often type the model without its prefix. There is
+    still no default model: an empty value means the reader is not configured.
+    """
+    name = raw.strip()
+    if name.startswith("models/"):
+        name = name[len("models/"):]
+    if name and not name.startswith("gemini-"):
+        name = f"gemini-{name}"
+    return name
+
+
 def _get_today() -> date:
     try:
         from app import clock
@@ -127,7 +141,7 @@ class HostedVisionReader:
             raise ReaderUnavailable(
                 f"VAARI_VISION_PROVIDER='{provider}' is not supported. The demo reader uses Gemini only."
             )
-        model = str(getattr(self.settings, "vision_model", "") or "").strip()
+        model = normalize_model_name(str(getattr(self.settings, "vision_model", "") or ""))
         if not model:
             raise ReaderUnavailable("VAARI_VISION_MODEL is not set. Name a current Gemini vision model.")
         api_key = os.environ.get("GEMINI_API_KEY", "").strip()
