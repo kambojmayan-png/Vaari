@@ -41,13 +41,13 @@ def synth_dir(tmp_path):
 
 
 def expected_pages(d):
-    return [(p.name.replace(".expected.json", ""), json.loads(p.read_text())) for p in sorted(d.glob("*.expected.json"))]
+    return [(p.name.replace(".expected.json", ""), json.loads(p.read_text(encoding="utf-8"))) for p in sorted(d.glob("*.expected.json"))]
 
 
 def test_the_committed_set_has_6_pages_and_48_rows():
     pages = sorted(PAGES.glob("synth_*.expected.json"))
     assert len(pages) == 6
-    assert sum(len(json.loads(p.read_text())["rows"]) for p in pages) == ev.PASS_BAR["rows"] == 48
+    assert sum(len(json.loads(p.read_text(encoding="utf-8"))["rows"]) for p in pages) == ev.PASS_BAR["rows"] == 48
 
 
 def test_a_perfect_reader_passes(synth_dir):
@@ -113,7 +113,7 @@ def test_results_replace_only_their_own_section(tmp_path):
     report.write_text("intro\n<!-- results:mock:start -->\nold\n<!-- results:mock:end -->\n"
                       "<!-- results:gemini_demo:start -->\nkeep me\n<!-- results:gemini_demo:end -->\n")
     ev.write_section("mock", "new body", report)
-    text = report.read_text()
+    text = report.read_text(encoding="utf-8")
     assert "new body" in text and "old" not in text and "keep me" in text and text.startswith("intro")
 
 
