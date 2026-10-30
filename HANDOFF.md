@@ -299,6 +299,10 @@ Production: follow [`docs/DEPLOY.md`](docs/DEPLOY.md) (Docker, `.env` from `.env
 - **Load.** Rate limits were tested for correctness, not under load; counts are per process.
 - **Python version.** Tests ran on Python 3.13 here; CI and the Docker image use 3.12.
 
+### Follow-ups after the handoff (branch `part-8-followups`)
+- **Merged `main` 23aac6a** ("default hosted model gemini-3.5-flash-lite with auto-prefix"). Conflict in `app/intake/hosted.py`: the pilot rule of **no default model** was kept (the brief asks for no hard-coded model names), and main's prefix normalisation was kept as `normalize_model_name` (`3.5-flash-lite` → `gemini-3.5-flash-lite`, `models/gemini-x` → `gemini-x`). Set `VAARI_VISION_MODEL` to the model you want.
+- **Fixed Driver View and Record View in the navbar.** They pointed at made-up tokens (`/driver/demo-machine`, `/record/demo-token`), so they always showed "That item was not found" / "Service Record Not Found". The server was never down. They now open `/driver` (pick a machine, then its real driver view) and `/record` (completed jobs, then their real records), both for signed-in operators. A wrong driver link now says "Link not working" instead of "Connection Issue" (`web/e2e/nav_pickers.spec.ts`). Frontend routes `/driver` and `/record` are new (additive); no API change.
+
 ### Things the next person must know
 1. **Sign-in.** In production there is no passcode. Create accounts with `python tasks.py create-user`. The frontend switches to a username/password form when `/api/health` says `auth: "accounts"`.
 2. **`VAARI_SECRET_KEY` signs every session.** Changing it signs everyone out. Keep it in `.env` only.
@@ -307,4 +311,4 @@ Production: follow [`docs/DEPLOY.md`](docs/DEPLOY.md) (Docker, `.env` from `.env
 5. **Readers.** Only `RegisterReader` and `get_reader()` may be imported outside `app/intake/`. The mock refuses in production. `custom` is the place for a real model ([FUTURE_CUSTOM_READER.md](docs/FUTURE_CUSTOM_READER.md)).
 6. **Logs.** Never pass personal data into a log call. `extra={"fields": ...}` only lets allow-listed keys through (`app/logging_setup.ALLOWED_FIELDS`), and `test_no_names_phones_tokens_or_images_in_logs` will catch most mistakes.
 7. **The e2e screenshot spec rewrites `docs/screenshots/`** on every run. Revert those files unless you meant to update them.
-8. **Branches.** Merge the six part branches into `main` in order (each is a fast-forward of the one before), or just merge `part-7-handoff`, which contains them all.
+8. **Branches.** Each part branch starts from the one before. `part-8-followups` contains everything plus `main` up to 23aac6a, so merging it into `main` is a fast-forward.

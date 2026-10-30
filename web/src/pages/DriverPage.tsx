@@ -26,6 +26,7 @@ export default function DriverPage() {
   const [driverData, setDriverData] = useState<DriverResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
+  const [fetchErrorCode, setFetchErrorCode] = useState<string | null>(null);
 
   // Active opened job
   const [selectedSlot, setSelectedSlot] = useState<SlotOut | null>(null);
@@ -51,6 +52,7 @@ export default function DriverPage() {
 
   const loadDriverJobs = useCallback(async (token: string) => {
     setFetchError(null);
+    setFetchErrorCode(null);
     try {
       const data = await getDriver(token);
       setDriverData(data);
@@ -62,7 +64,12 @@ export default function DriverPage() {
       });
     } catch (err) {
       if (err instanceof ApiError) {
-        setFetchError(friendlyError(err.error_code) || err.message);
+        setFetchErrorCode(err.error_code);
+        setFetchError(
+          err.error_code === 'NOT_FOUND'
+            ? 'This driver link does not exist. Ask the centre for the current link.'
+            : friendlyError(err.error_code) || err.message,
+        );
       } else {
         setFetchError('Could not load jobs. Check network connection.');
       }
@@ -275,7 +282,11 @@ export default function DriverPage() {
     return (
       <div className="driver-cab-container" id="driver-page">
         <div className="driver-error-card">
-          <h2>Connection Issue</h2>
+          <h2 id="driver-error-title">
+            {fetchErrorCode === 'NOT_FOUND' || fetchErrorCode === 'LINK_EXPIRED'
+              ? 'Link not working'
+              : 'Connection Issue'}
+          </h2>
           <p>{fetchError}</p>
           <button
             type="button"

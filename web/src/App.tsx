@@ -5,6 +5,8 @@ import DeskPage from './pages/DeskPage';
 import DriverPage from './pages/DriverPage';
 import OfficerPage from './pages/OfficerPage';
 import RecordPage from './pages/RecordPage';
+import DriverPickerPage from './pages/DriverPickerPage';
+import RecordPickerPage from './pages/RecordPickerPage';
 import IntakePage from './pages/IntakePage';
 
 export default function App() {
@@ -41,14 +43,14 @@ export default function App() {
                 Officer
               </NavLink>
               <NavLink
-                to="/driver/demo-machine"
+                to="/driver"
                 className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
                 id="nav-driver"
               >
                 Driver View
               </NavLink>
               <NavLink
-                to="/record/demo-token"
+                to="/record"
                 className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
                 id="nav-record"
               >
@@ -78,12 +80,28 @@ export default function App() {
                 </PasscodeGate>
               }
             />
+            <Route
+              path="/driver"
+              element={
+                <PasscodeGate>
+                  <DriverPickerPage />
+                </PasscodeGate>
+              }
+            />
             <Route path="/driver/:machineToken" element={<DriverPage />} />
             <Route
               path="/officer"
               element={
                 <PasscodeGate roles={['officer', 'operator']}>
                   <OfficerPage />
+                </PasscodeGate>
+              }
+            />
+            <Route
+              path="/record"
+              element={
+                <PasscodeGate>
+                  <RecordPickerPage />
                 </PasscodeGate>
               }
             />

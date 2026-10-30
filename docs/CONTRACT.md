@@ -365,7 +365,7 @@ All seeded data is fictional and every seeded request carries the `seeded reques
 
 ## 13. Frontend contract (phase 2)
 
-- Routes: `/` redirects to `/desk`; `/desk`; `/driver/:machineToken`; `/officer`; `/record/:token`; `/intake` (phase 3).
+- Routes: `/` redirects to `/desk`; `/desk`; `/driver/:machineToken`; `/officer`; `/record/:token`; `/intake` (phase 3). *(Pilot v0.2 adds `/driver` and `/record`: operator pickers that open a real driver view or record.)*
 - The API base is `/api`. In dev, Vite proxies `/api` to `127.0.0.1:8000`. In serve mode, FastAPI serves `web/dist` at `/` with an SPA fallback for every path not under `/api`. One origin, so no CORS and one tunnel.
 - The passcode is entered once on Desk or Officer and kept in `sessionStorage`. Driver and Record pages never ask for it.
 - `web/src/api.ts` is the only file that calls `fetch`. It turns every error into `{error_code, message, details}` and the UI switches on `error_code`.

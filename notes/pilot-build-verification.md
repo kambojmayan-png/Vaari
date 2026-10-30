@@ -28,3 +28,4 @@ Real output from the test run after each numbered item (summary lines pasted as 
 | S1 FUTURE_SATELLITE.md | part-6-satellite-docs | `python tasks.py test` | `373 passed` (docs only) |
 | S2 README/ROADMAP/ARCHITECTURE satellite status | part-6-satellite-docs | `python tasks.py test` | `376 passed, 1 warning in 30.89s` |
 | Part 7 Definition of Done | part-7-handoff | `pytest` / `ruff` / web build / `smoke` / `e2e` / fresh-clone Docker per DEPLOY.md | `376 passed, 1 warning in 31.72s` / `All checks passed!` / `built` / `1 passed` / development `8 passed (22.4s)` + production `2 passed (3.7s)` / healthy, roles OK, passcode 401, EXIF stripped, backup+restore OK, refused with empty secret |
+| Follow-ups: merge main 23aac6a, navbar Driver/Record pickers | part-8-followups | `pytest` / `e2e` | `380 passed` / development `11 passed`, production `2 passed` |
