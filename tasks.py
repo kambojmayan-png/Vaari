@@ -555,6 +555,7 @@ def _run_e2e_pass(mode: str, spec_args: list[str]) -> int:
             playwright_env = env.copy()
             playwright_env["BASE_URL"] = f"http://127.0.0.1:{port}"
             playwright_env["VAARI_E2E_MODE"] = mode
+            playwright_env["VAARI_PYTHON"] = str(py)  # specs that reset the database use this Python
             npx_cmd = "npx.cmd" if os.name == "nt" else "npx"
             return run_cmd([npx_cmd, "playwright", "test"] + spec_args, env=playwright_env, cwd=ROOT / "web")
         finally:
