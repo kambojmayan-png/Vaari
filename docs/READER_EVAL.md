@@ -92,7 +92,48 @@ The mock is not a reader: it returns the same six fixture rows for every image, 
 <!-- results:mock:end -->
 
 <!-- results:gemini_demo:start -->
-**Not run.** The Gemini API could not be reached from the environment where this was built, and no key was available there. To fill this in, run the command at the top of this page on a machine that can reach `generativelanguage.googleapis.com`, with `GEMINI_API_KEY` in `.env` and a current model name in `VAARI_VISION_MODEL`.
+### gemini_demo (Google Gemini, model gemini-3.5-flash-lite)
+
+Run 2026-10-30T10:01:56Z. Verdict against the pass bar: **FAIL**.
+
+| Check (synth_01 to synth_06) | Result | Bar | Met |
+| --- | --- | --- | --- |
+| Rows found | 41 of 48 | 48 of 48 | **no** |
+| Invented rows | 0 | 0 | yes |
+| Silent phone errors | 0 of 48 | 0 of 48 | yes |
+| Silent acres errors | 0 of 48 | 0 of 48 | yes |
+| phone right | 41 of 48 | at least 46 of 48 | **no** |
+| acres right | 30 of 48 | at least 46 of 48 | **no** |
+| service_type right | 40 of 48 | at least 45 of 48 | **no** |
+| harvest_date right | 33 of 48 | at least 44 of 48 | **no** |
+| village right | 39 of 48 | at least 43 of 48 | **no** |
+| name right | 29 of 48 | reported only | yes |
+
+Per page (k of N rows right for each field):
+
+| Page | Rows found | Phone | Acres | Machine | Date | Village | Name | Silent phone | Silent acres | Seconds | Error |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| page1 | 0 of 6 | 0 of 6 | 0 of 6 | 0 of 6 | 0 of 6 | 0 of 6 | 0 of 6 | 0 | 0 | 3.14 |  |
+| synth_01 | 8 of 8 | 8 of 8 | 8 of 8 | 8 of 8 | 8 of 8 | 7 of 8 | 7 of 8 | 0 | 0 | 5.88 |  |
+| synth_02 | 8 of 8 | 8 of 8 | 0 of 8 | 8 of 8 | 2 of 8 | 8 of 8 | 0 of 8 | 0 | 0 | 5.41 |  |
+| synth_03 | 1 of 8 | 1 of 8 | 0 of 8 | 0 of 8 | 0 of 8 | 1 of 8 | 0 of 8 | 0 | 0 | 3.12 |  |
+| synth_04 | 8 of 8 | 8 of 8 | 7 of 8 | 8 of 8 | 7 of 8 | 7 of 8 | 7 of 8 | 0 | 0 | 5.87 |  |
+| synth_05 | 8 of 8 | 8 of 8 | 7 of 8 | 8 of 8 | 8 of 8 | 8 of 8 | 7 of 8 | 0 | 0 | 6.22 |  |
+| synth_06 | 8 of 8 | 8 of 8 | 8 of 8 | 8 of 8 | 8 of 8 | 8 of 8 | 8 of 8 | 0 | 0 | 5.75 |  |
+
+Most common errors (field: written on the page → expected → read):
+
+- 3 × service_type: `(blank)` → `super_seeder` → `(row missing)`
+- 3 × harvest_date: `(blank)` → `` → `(row missing)`
+- 3 × acres: `1.5` → `1.5` → `(blank)`
+- 3 × acres: `2.5` → `2.5` → `(blank)`
+- 3 × service_type: `Baler` → `baler` → `(row missing)`
+- 2 × service_type: `(blank)` → `happy_seeder` → `(row missing)`
+- 2 × harvest_date: `30/10` → `2026-10-30` → `(blank)`
+- 2 × village: `Rampura Phul` → `rampura phul` → `(row missing)`
+- 2 × service_type: `S.S.` → `super_seeder` → `(row missing)`
+- 2 × village: `Pind Kalan` → `pind kalan` → `(row missing)`
+
 <!-- results:gemini_demo:end -->
 
 <!-- results:custom:start -->
